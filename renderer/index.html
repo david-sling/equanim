@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>AnimSpec Renderer</title>
+    <style>
+      *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+      body {
+        background: #0d0d12;
+        color: #ccc;
+        font-family: ui-monospace, "Cascadia Code", "Fira Code", monospace;
+        font-size: 13px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        padding: 24px 16px;
+        min-height: 100vh;
+        gap: 16px;
+      }
+
+      h1 {
+        color: #eee;
+        font-size: 16px;
+        font-weight: 500;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+
+      /* ── Canvas ── */
+      #canvas-wrap {
+        position: relative;
+        border: 1px solid #2a2a35;
+        border-radius: 4px;
+        overflow: hidden;
+      }
+
+      canvas {
+        display: block;
+        cursor: crosshair;
+      }
+
+      /* ── Controls ── */
+      .controls {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        flex-wrap: wrap;
+      }
+
+      button {
+        background: #1e1e28;
+        color: #ccc;
+        border: 1px solid #3a3a4a;
+        border-radius: 3px;
+        padding: 5px 14px;
+        cursor: pointer;
+        font-family: inherit;
+        font-size: 12px;
+        transition: background 0.1s, color 0.1s;
+      }
+
+      button:hover:not(:disabled) {
+        background: #2c2c3c;
+        color: #eee;
+      }
+
+      button:disabled {
+        opacity: 0.35;
+        cursor: default;
+      }
+
+      #seek-bar {
+        width: 320px;
+        accent-color: #44aaff;
+        cursor: pointer;
+      }
+
+      #time-display {
+        color: #44aaff;
+        min-width: 52px;
+        text-align: right;
+      }
+
+      /* ── State badge ── */
+      .state-badge {
+        font-size: 11px;
+        padding: 2px 8px;
+        border-radius: 10px;
+        border: 1px solid transparent;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+      }
+
+      .state-idle    { border-color: #444; color: #888; }
+      .state-playing { border-color: #44aaff55; color: #44aaff; }
+      .state-paused  { border-color: #ffaa4455; color: #ffaa44; }
+      .state-ended   { border-color: #66aa6655; color: #66aa66; }
+
+      /* ── Spec editor ── */
+      details {
+        width: 100%;
+        max-width: 1000px;
+      }
+
+      summary {
+        cursor: pointer;
+        color: #888;
+        user-select: none;
+        padding: 4px 0;
+      }
+
+      summary:hover { color: #aaa; }
+
+      .spec-editor {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        padding-top: 10px;
+      }
+
+      textarea {
+        width: 100%;
+        height: 260px;
+        background: #12121a;
+        color: #b0c4de;
+        border: 1px solid #2a2a38;
+        border-radius: 3px;
+        padding: 10px;
+        font-family: inherit;
+        font-size: 12px;
+        resize: vertical;
+        tab-size: 2;
+      }
+
+      textarea:focus { outline: 1px solid #44aaff55; }
+
+      #error-display {
+        display: none;
+        background: #2a1010;
+        border: 1px solid #aa4444;
+        border-radius: 3px;
+        color: #ff8888;
+        padding: 8px 12px;
+        font-size: 12px;
+        white-space: pre-wrap;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>AnimSpec Renderer</h1>
+
+    <div id="canvas-wrap">
+      <canvas id="canvas" width="1000" height="600"></canvas>
+    </div>
+
+    <div class="controls">
+      <button id="btn-play">▶ Play</button>
+      <button id="btn-pause" disabled>⏸ Pause</button>
+      <button id="btn-reset">↺ Reset</button>
+      <input id="seek-bar" type="range" min="0" max="3" step="0.01" value="0" />
+      <span id="time-display">0.00s</span>
+      <span id="state-display" class="state-badge state-idle">idle</span>
+    </div>
+
+    <details>
+      <summary>▸ Load spec JSON</summary>
+      <div class="spec-editor">
+        <textarea id="spec-input" placeholder="Paste AnimSpec JSON here…"></textarea>
+        <div id="error-display"></div>
+        <button id="btn-load" style="align-self: flex-start">Load spec</button>
+      </div>
+    </details>
+
+    <script type="module" src="./src/main.ts"></script>
+  </body>
+</html>
