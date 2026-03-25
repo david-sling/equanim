@@ -99,9 +99,18 @@ const centerMeta: Meta = {
 
 const topLeftMeta: Meta = { ...centerMeta, origin: "top-left" };
 
+// Default variable values matching the dampened-wave spec
+const waveVars = { amplitude: 80, decay: 1.8, k: 0.018, omega: 6.28 };
+
 const waveSpec: AnimSpec = {
   spec: "animspec/0.1",
   meta: centerMeta,
+  variables: {
+    amplitude: { label: "Amplitude",        default: 80,   min: 10,  max: 200, step: 1 },
+    decay:     { label: "Decay rate",        default: 1.8,  min: 0.1, max: 6,   step: 0.05 },
+    k:         { label: "Wave number",       default: 0.018,min: 0.005,max: 0.08,step: 0.001 },
+    omega:     { label: "Angular frequency", default: 6.28, min: 1,   max: 20,  step: 0.1 },
+  },
   scene: {
     id: "root",
     objects: [
@@ -111,9 +120,9 @@ const waveSpec: AnimSpec = {
         style: { stroke: "#44aaff", stroke_width: 2.5, fill: "none" },
         domain: { s: [-500, 500], samples: 800 },
         equations: { x: "s", y: "A(t) * E(s, t) * sin(k * s - omega * t)" },
-        params: { k: 0.018, omega: 6.28 },
+        // No params block — k, omega, amplitude, decay all come through vars
         functions: {
-          A: { args: ["t"], body: "80 * exp(-1.8 * t)" },
+          A: { args: ["t"], body: "amplitude * exp(-decay * t)" },
           E: { args: ["s", "t"], body: "clamp(omega * t - abs(k * s), 0, 1)" },
         },
         timeline: { start: 0.0, end: 3.0 },
@@ -205,7 +214,7 @@ console.log("\n--- generateSamples: sample count and domain coverage ---");
   const wavePrepared = prepared.objects[0] as PreparedParametricPath;
 
   // Correct number of samples
-  const samples = generateSamples(wavePrepared, centerMeta, 1.0);
+  const samples = generateSamples(wavePrepared, centerMeta, 1.0, waveVars);
   assert("generates exactly 800 samples", samples.length, 800);
 
   // First sample: s=-500, x=-500, canvas_x=0
@@ -227,41 +236,29 @@ console.log("\n--- generateSamples: y values at key time points ---");
   const wavePrepared = prepared.objects[0] as PreparedParametricPath;
 
   // At t=0: E=0 everywhere → y=0 everywhere → canvas_y = height/2 = 300
-  const samplesT0 = generateSamples(wavePrepared, centerMeta, 0);
+  const samplesT0 = generateSamples(wavePrepared, centerMeta, 0, waveVars);
   const allAtBaseline = samplesT0.every(([, cy]) => Math.abs(cy - 300) < 0.001);
   assert("at t=0, all y values are at baseline (wave hasn't started)", allAtBaseline, true);
 
-  // At t=1.5 (well into the animation), s=0 is active
-  // E(0, 1.5) = clamp(6.28*1.5 - 0, 0, 1) = 1
-  // A(1.5) = 80*exp(-2.7) ≈ 5.43
-  // y = 5.43 * 1 * sin(-6.28*1.5) = 5.43 * sin(-9.42) ≈ 5.43 * sin(-3pi) ≈ 0
-  // Actually sin(-9.42) = sin(-3pi) ≈ 0, so center point is near baseline
-  const samplesT15 = generateSamples(wavePrepared, centerMeta, 1.5);
-  const centerSample = samplesT15[399]!; // s ≈ 0
-  assertRange("at t=1.5 s≈0, canvas_y is bounded (≈baseline since sin(-3pi)≈0)",
-    centerSample[1], 295, 305);
+  // At t=1.5, s≈0: sin(-3pi) ≈ 0, so center stays near baseline
+  const samplesT15 = generateSamples(wavePrepared, centerMeta, 1.5, waveVars);
+  const centerSample = samplesT15[399]!;
+  assertRange("at t=1.5 s≈0, canvas_y ≈ baseline (sin(-3pi)≈0)", centerSample[1], 295, 305);
 
-  // At t=0.25 with s=0: wave should be displaced
-  // A(0.25)=80*exp(-0.45)≈50.5, E(0,0.25)=clamp(6.28*0.25,0,1)=1
-  // y=50.5*1*sin(-6.28*0.25)=50.5*sin(-pi/2)=-50.5
-  // canvas_y = 300 - (-50.5) = 350.5
-  const samplesT025 = generateSamples(wavePrepared, centerMeta, 0.25);
+  // At t=0.25, s=0: A=80*exp(-0.45)≈50.5, E=1, sin(-pi/2)=-1 → y≈-50.5 → canvas_y≈350.5
+  const samplesT025 = generateSamples(wavePrepared, centerMeta, 0.25, waveVars);
   const centerT025 = samplesT025[399]!;
-  // sin(-pi/2) = -1, so y ≈ -50.5, canvas_y ≈ 350.5
   const A025 = 80 * Math.exp(-1.8 * 0.25);
   const expectedSpecY = A025 * 1 * Math.sin(-6.28 * 0.25);
   const expectedCanvasY = 300 - expectedSpecY;
   assertClose("at t=0.25 s≈0, canvas_y matches A(t)*sin(-pi/2)", centerT025[1], expectedCanvasY, 0.5);
 
-  // Wavefront: at t=1.0, s=500 should be zero (E=0 — wavefront hasn't reached there)
-  // E(500, 1.0) = clamp(6.28*1 - abs(0.018*500), 0, 1) = clamp(6.28-9, 0, 1) = clamp(-2.72, 0, 1) = 0
-  const samplesT10 = generateSamples(wavePrepared, centerMeta, 1.0);
-  const rightEdge = samplesT10[799]!; // s=500
+  // Wavefront: t=1.0, s=500 → E=clamp(6.28-9,0,1)=0 → silent
+  const samplesT10 = generateSamples(wavePrepared, centerMeta, 1.0, waveVars);
+  const rightEdge = samplesT10[799]!;
   assertRange("at t=1.0, s=500 wavefront not reached → canvas_y ≈ 300", rightEdge[1], 299, 301);
 
-  // Left edge (s=-500) at t=1.0 should also be silent
-  // E(-500, 1.0) = clamp(6.28 - abs(-9), 0, 1) = clamp(-2.72, 0, 1) = 0
-  const leftEdge = samplesT10[0]!; // s=-500
+  const leftEdge = samplesT10[0]!;
   assertRange("at t=1.0, s=-500 also silent → canvas_y ≈ 300", leftEdge[1], 299, 301);
 }
 
@@ -273,7 +270,7 @@ console.log("\n--- renderFrame: draw call structure ---");
   const ctx = makeMockCtx();
 
   // Render at t=1.0 (both objects active)
-  renderFrame(ctx as unknown as CanvasRenderingContext2D, prepared, 1.0);
+  renderFrame(ctx as unknown as CanvasRenderingContext2D, prepared, 1.0, "#0a0a0f", waveVars);
 
   // Should have cleared with a fillRect
   assert("renderFrame calls fillRect (clear)", ctx._countMethod("fillRect") >= 1, true);
@@ -309,21 +306,21 @@ console.log("\n--- renderFrame: timeline filtering ---");
   const ctx = makeMockCtx();
 
   // At t=0.5: only baseline should render
-  renderFrame(ctx as unknown as CanvasRenderingContext2D, prepared, 0.5);
+  renderFrame(ctx as unknown as CanvasRenderingContext2D, prepared, 0.5, "#0a0a0f", waveVars);
   assert("at t=0.5 (wave inactive): only 1 beginPath (baseline)", ctx._countMethod("beginPath"), 1);
   assert("at t=0.5: only 1 stroke (baseline)", ctx._countMethod("stroke"), 1);
 
   ctx._clearCalls();
 
   // At t=1.5: both should render
-  renderFrame(ctx as unknown as CanvasRenderingContext2D, prepared, 1.5);
+  renderFrame(ctx as unknown as CanvasRenderingContext2D, prepared, 1.5, "#0a0a0f", waveVars);
   assert("at t=1.5 (both active): 2 beginPaths", ctx._countMethod("beginPath"), 2);
   assert("at t=1.5: 2 strokes", ctx._countMethod("stroke"), 2);
 
   ctx._clearCalls();
 
   // At t=2.5: only baseline should render
-  renderFrame(ctx as unknown as CanvasRenderingContext2D, prepared, 2.5);
+  renderFrame(ctx as unknown as CanvasRenderingContext2D, prepared, 2.5, "#0a0a0f", waveVars);
   assert("at t=2.5 (wave inactive again): 1 beginPath", ctx._countMethod("beginPath"), 1);
   assert("at t=2.5: 1 stroke", ctx._countMethod("stroke"), 1);
 }
@@ -333,7 +330,7 @@ console.log("\n--- renderFrame: style application ---");
   const prepared = prepareScene(waveSpec);
   const ctx = makeMockCtx();
 
-  renderFrame(ctx as unknown as CanvasRenderingContext2D, prepared, 1.0);
+  renderFrame(ctx as unknown as CanvasRenderingContext2D, prepared, 1.0, "#0a0a0f", waveVars);
 
   // After render, strokeStyle should be the last object's stroke color
   // (baseline is last, stroke="#ffffff22")
@@ -356,6 +353,44 @@ console.log("\n--- prepareScene ---");
   const wavePrepared = prepared.objects[0] as PreparedParametricPath;
   assert("compiledX exists", typeof wavePrepared.compiledX.evaluate, "function");
   assert("compiledY exists", typeof wavePrepared.compiledY.evaluate, "function");
+}
+
+// ─── generateSamples: variable override changes output ────────────────────────
+
+console.log("\n--- generateSamples: variable effects ---");
+{
+  const prepared = prepareScene(waveSpec);
+  const wavePrepared = prepared.objects[0] as PreparedParametricPath;
+
+  // amplitude=0 → all y values should be at baseline (canvas_y=300)
+  const zeroAmpVars = { ...waveVars, amplitude: 0 };
+  const samplesZeroAmp = generateSamples(wavePrepared, centerMeta, 0.25, zeroAmpVars);
+  const allAtZero = samplesZeroAmp.every(([, cy]) => Math.abs(cy - 300) < 0.001);
+  assert("amplitude=0: all canvas_y at baseline", allAtZero, true);
+
+  // amplitude=200 → displacement at t=0.25 s=0 should be 2.5× default
+  const highAmpVars = { ...waveVars, amplitude: 200 };
+  const defaultCenter = generateSamples(wavePrepared, centerMeta, 0.25, waveVars)[399]!;
+  const highAmpCenter = generateSamples(wavePrepared, centerMeta, 0.25, highAmpVars)[399]!;
+  const defaultDisp = Math.abs(defaultCenter[1] - 300);
+  const highDisp = Math.abs(highAmpCenter[1] - 300);
+  assertClose("amplitude=200 gives 2.5× displacement", highDisp / defaultDisp, 2.5, 0.05);
+
+  // omega=12.56 (2× default) → wavefront reaches s=300 twice as fast
+  // At t=0.5: default omega: E(300,0.5)=clamp(6.28*0.5 - 5.4,0,1)=clamp(-2.26,0,1)=0
+  //           2× omega:      E(300,0.5)=clamp(12.56*0.5 - 5.4,0,1)=clamp(0.88,0,1)=0.88
+  // So with double omega, s=300 is partially active at t=0.5
+  const doubleOmega = { ...waveVars, omega: 12.56 };
+  // At t=0.5, s=300 with default omega: wavefront hasn't arrived → y=0 → canvas_y=300
+  const defaultS300 = generateSamples(wavePrepared, centerMeta, 0.5, waveVars);
+  // s=300 is at index (300+500)/1000*(800-1) ≈ 639
+  const idx300 = Math.round((300 + 500) / 1000 * 799);
+  assertRange("default omega: s=300 silent at t=0.5 (canvas_y≈300)", defaultS300[idx300]![1], 299, 301);
+
+  const doubleS300 = generateSamples(wavePrepared, centerMeta, 0.5, doubleOmega);
+  // With 2× omega wavefront reaches s=300 — canvas_y should deviate from 300
+  const deviation = Math.abs(doubleS300[idx300]![1] - 300);
+  assert("double omega: s=300 is active at t=0.5 (non-zero displacement)", deviation > 1, true);
 }
 
 // ─── Summary ──────────────────────────────────────────────────────────────────

@@ -39,24 +39,29 @@ function assertRange(label: string, actual: number, lo: number, hi: number) {
   }
 }
 
-// ─── Dampened wave params (from spec) ─────────────────────────────────────────
+// ─── Dampened wave (updated spec: k/omega/amplitude/decay come from variables) ─
+//
+// The spec no longer has a params block on the wave object — all four values
+// are global variables. We simulate this by passing them as vars at eval time.
 
-const params = { k: 0.018, omega: 6.28 };
+const waveVars = { amplitude: 80, decay: 1.8, k: 0.018, omega: 6.28 };
 
 const functions = {
-  A: { args: ["t"], body: "80 * exp(-1.8 * t)" },
+  A: { args: ["t"], body: "amplitude * exp(-decay * t)" },
   E: { args: ["s", "t"], body: "clamp(omega * t - abs(k * s), 0, 1)" },
 };
 
-const ev = buildEvaluator(params, functions);
+// No params — everything comes through vars
+const ev = buildEvaluator({}, functions);
 
 // ─── Test: basic constant expressions ─────────────────────────────────────────
 
-console.log("\n--- Constants & params ---");
-assert("k resolves to 0.018", ev.evaluate("k", 0), 0.018);
-assert("omega resolves to 6.28", ev.evaluate("omega", 0), 6.28);
-assert("t=1 is 1", ev.evaluate("t", 1), 1);
-assert("s at s=42", ev.evaluate("s", 0, 42), 42);
+console.log("\n--- Constants & vars ---");
+assert("k from vars resolves to 0.018", ev.evaluate("k", 0, undefined, waveVars), 0.018);
+assert("omega from vars resolves to 6.28", ev.evaluate("omega", 0, undefined, waveVars), 6.28);
+assert("amplitude from vars resolves to 80", ev.evaluate("amplitude", 0, undefined, waveVars), 80);
+assert("t=1 is 1", ev.evaluate("t", 1, undefined, waveVars), 1);
+assert("s at s=42", ev.evaluate("s", 0, 42, waveVars), 42);
 
 // ─── Test: math builtins ──────────────────────────────────────────────────────
 
@@ -67,26 +72,28 @@ assert("abs(-5) = 5", ev.evaluate("abs(-5)", 0), 5);
 assert("clamp(2, 0, 1) = 1", ev.evaluate("clamp(2, 0, 1)", 0), 1);
 assert("clamp(-1, 0, 1) = 0", ev.evaluate("clamp(-1, 0, 1)", 0), 0);
 assert("clamp(0.5, 0, 1) = 0.5", ev.evaluate("clamp(0.5, 0, 1)", 0), 0.5);
+// builtins work even without vars
+assert("pi resolves", ev.evaluate("pi", 0), Math.PI, 1e-6);
 
 // ─── Test: named functions ────────────────────────────────────────────────────
 
-console.log("\n--- Named functions ---");
+console.log("\n--- Named functions (with vars) ---");
 
-// A(t) = 80 * exp(-1.8 * t)
+// A(t) = amplitude * exp(-decay * t)
 // A(0) = 80 * exp(0) = 80
-assert("A(0) = 80", ev.evaluate("A(t)", 0), 80);
+assert("A(0) = 80", ev.evaluate("A(t)", 0, undefined, waveVars), 80);
 // A(1) = 80 * exp(-1.8) ≈ 13.07
-assert("A(1) ≈ 13.07", ev.evaluate("A(t)", 1), 80 * Math.exp(-1.8), 1e-3);
+assert("A(1) ≈ 13.07", ev.evaluate("A(t)", 1, undefined, waveVars), 80 * Math.exp(-1.8), 1e-3);
 // A(3) should be very small
-assertRange("A(3) is near 0", ev.evaluate("A(t)", 3), 0, 2);
+assertRange("A(3) is near 0", ev.evaluate("A(t)", 3, undefined, waveVars), 0, 2);
 
 // E(s, t) = clamp(omega*t - abs(k*s), 0, 1)
 // At t=0, s=0: omega*0 - 0 = 0 → clamp(0,0,1) = 0
-assert("E(0,0) = 0", ev.evaluate("E(s, t)", 0, 0), 0);
+assert("E(0,0) = 0", ev.evaluate("E(s, t)", 0, 0, waveVars), 0);
 // At t=1, s=0: omega*1 - 0 = 6.28 → clamp(6.28,0,1) = 1
-assert("E(0,1) = 1", ev.evaluate("E(s, t)", 1, 0), 1);
+assert("E(0,1) = 1", ev.evaluate("E(s, t)", 1, 0, waveVars), 1);
 // At t=1, s=500: omega*1 - abs(k*500) = 6.28 - 9 = -2.72 → clamp(-2.72,0,1) = 0
-assert("E(500,1) = 0 (wavefront not reached)", ev.evaluate("E(s, t)", 1, 500), 0);
+assert("E(500,1) = 0 (wavefront not reached)", ev.evaluate("E(s, t)", 1, 500, waveVars), 0);
 
 // ─── Test: full wave equation y = A(t) * E(s,t) * sin(k*s - omega*t) ─────────
 
@@ -95,27 +102,24 @@ const yExpr = "A(t) * E(s, t) * sin(k * s - omega * t)";
 const compiledY = ev.compile(yExpr);
 
 // At t=0, E=0 everywhere → y=0
-assert("y(s=0, t=0) = 0", compiledY.evaluate(0, 0), 0);
-assert("y(s=100, t=0) = 0", compiledY.evaluate(0, 100), 0);
+assert("y(s=0, t=0) = 0", compiledY.evaluate(0, 0, waveVars), 0);
+assert("y(s=100, t=0) = 0", compiledY.evaluate(0, 100, waveVars), 0);
 
 // At t=2, s=0: A(2)=80*exp(-3.6)≈2.21, E=1, sin(-12.56)=sin(0)≈0
-// sin(-omega*t) = sin(-6.28*2) = sin(-12.56) ≈ sin(-4*pi) ≈ 0
-const yAt2s0 = compiledY.evaluate(2, 0);
+const yAt2s0 = compiledY.evaluate(2, 0, waveVars);
 assertRange("y(s=0, t=2) is bounded", yAt2s0, -5, 5);
 
-// At t=1, s=0: A≈13.07, E=1, sin(-6.28)≈0
-// sin(-6.28) ≈ sin(-2*pi) ≈ 0
-const yAt1s0 = compiledY.evaluate(1, 0);
+// At t=1, s=0: sin(-6.28) ≈ sin(-2*pi) ≈ 0
+const yAt1s0 = compiledY.evaluate(1, 0, waveVars);
 assertRange("y(s=0, t=1) near 0 (sin at 2pi)", yAt1s0, -1, 1);
 
-// Peak check: at t=0.25, s=0: A=80*exp(-0.45)≈50.5, E=clamp(1.57,0,1)=1
-// sin(-6.28*0.25) = sin(-pi/2) = -1
+// Peak check: at t=0.25, s=0: A=80*exp(-0.45)≈50.5, E=1, sin(-pi/2)=-1
 const t025 = 0.25;
 const A025 = 80 * Math.exp(-1.8 * t025);
 const expectedPeak = A025 * 1 * Math.sin(-6.28 * t025);
 assert(
   "y(s=0, t=0.25) matches manual calculation",
-  compiledY.evaluate(t025, 0),
+  compiledY.evaluate(t025, 0, waveVars),
   expectedPeak,
   0.01
 );
@@ -125,16 +129,63 @@ assert(
 console.log("\n--- Compiled vs one-shot consistency ---");
 for (const t of [0, 0.5, 1.0, 1.5, 2.0]) {
   for (const s of [-200, 0, 200]) {
-    const oneShot = ev.evaluate(yExpr, t, s);
-    const compiled = compiledY.evaluate(t, s);
-    assert(
-      `compile==oneshot at t=${t} s=${s}`,
-      compiled,
-      oneShot,
-      1e-10
-    );
+    const oneShot = ev.evaluate(yExpr, t, s, waveVars);
+    const compiled = compiledY.evaluate(t, s, waveVars);
+    assert(`compile==oneshot at t=${t} s=${s}`, compiled, oneShot, 1e-10);
   }
 }
+
+// ─── Test: variable injection & override ─────────────────────────────────────
+
+console.log("\n--- Variable injection ---");
+
+// amplitude=0 → y=0 everywhere regardless of t/s
+const zeroAmp = { ...waveVars, amplitude: 0 };
+assertRange("amplitude=0 kills the wave at t=0.5", compiledY.evaluate(0.5, 0, zeroAmp), -0.001, 0.001);
+
+// amplitude=200 → peak is 2.5× the default (200/80)
+const highAmp = { ...waveVars, amplitude: 200 };
+const defaultPeak = compiledY.evaluate(t025, 0, waveVars);
+const highPeak = compiledY.evaluate(t025, 0, highAmp);
+assert(
+  "amplitude=200 scales peak by 2.5×",
+  Math.round((highPeak / defaultPeak) * 10) / 10,
+  2.5,
+  0.05
+);
+
+// decay=0.1 (slow decay): A(3) should be much larger than default
+const slowDecay = { ...waveVars, decay: 0.1 };
+const defaultA3 = ev.evaluate("A(t)", 3, undefined, waveVars);
+const slowA3 = ev.evaluate("A(t)", 3, undefined, slowDecay);
+assert("slow decay (0.1) has larger A(3) than default (1.8)", Number(slowA3 > defaultA3), 1);
+
+// k changes wavefront speed: higher k → wavefront reaches s=300 sooner
+// E(300, t) = clamp(omega*t - abs(k*300), 0, 1)
+// Default k=0.018: E(300,1) = clamp(6.28 - 5.4, 0, 1) = clamp(0.88, 0, 1) = 0.88
+//   (wavefront arrived but hasn't fully saturated yet — E reaches 1 at t≈1.02)
+// High k=0.05:    E(300,1) = clamp(6.28 - 15, 0, 1) = 0  (wavefront not there yet)
+const highK = { ...waveVars, k: 0.05 };
+const eDefault = ev.evaluate("E(s, t)", 1.0, 300, waveVars);
+const eHighK   = ev.evaluate("E(s, t)", 1.0, 300, highK);
+assert("default k: E(300,1) = 0.88 (partial arrival)", eDefault, 0.88, 1e-6);
+assert("high k=0.05: E(300,1) = 0 (wavefront not reached)", eHighK, 0);
+
+// vars override same-named entry in params block
+const evWithParam = buildEvaluator({ myConst: 10 }, {});
+assert("param gives 10", evWithParam.evaluate("myConst", 0), 10);
+assert("var overrides param", evWithParam.evaluate("myConst", 0, undefined, { myConst: 99 }), 99);
+
+// defaultVarValues helper
+console.log("\n--- defaultVarValues ---");
+import { defaultVarValues } from "./player.js";
+const dv = defaultVarValues({
+  x: { default: 1, min: 0, max: 10 },
+  y: { default: 5.5, min: 0, max: 10 },
+});
+assert("defaultVarValues: x=1", dv["x"]!, 1);
+assert("defaultVarValues: y=5.5", dv["y"]!, 5.5);
+assert("defaultVarValues: key count", Object.keys(dv).length, 2);
 
 // ─── Summary ──────────────────────────────────────────────────────────────────
 

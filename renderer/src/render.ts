@@ -1,11 +1,11 @@
 import type {
   AnimSpec,
   Meta,
-  Scene,
   SceneObject,
   ParametricPath,
   Line,
   Timeline,
+  VarValues,
 } from "./types.js";
 import { buildEvaluator, type CompiledExpr } from "./evaluator.js";
 
@@ -122,7 +122,8 @@ export function prepareScene(spec: AnimSpec): PreparedScene {
 export function generateSamples(
   prepared: PreparedParametricPath,
   meta: Meta,
-  t: number
+  t: number,
+  vars: VarValues = {}
 ): Array<[number, number]> {
   const { source, compiledX, compiledY } = prepared;
   const [sMin, sMax] = source.domain.s;
@@ -132,8 +133,8 @@ export function generateSamples(
 
   for (let i = 0; i < n; i++) {
     const s = sMin + i * step;
-    const sx = compiledX.evaluate(t, s);
-    const sy = compiledY.evaluate(t, s);
+    const sx = compiledX.evaluate(t, s, vars);
+    const sy = compiledY.evaluate(t, s, vars);
     points.push(toCanvas(sx, sy, meta));
   }
 
@@ -155,9 +156,10 @@ function drawParametricPath(
   ctx: CanvasRenderingContext2D,
   prepared: PreparedParametricPath,
   meta: Meta,
-  t: number
+  t: number,
+  vars: VarValues
 ): void {
-  const points = generateSamples(prepared, meta, t);
+  const points = generateSamples(prepared, meta, t, vars);
   if (points.length === 0) return;
 
   applyStyle(ctx, prepared.source.style);
@@ -180,12 +182,13 @@ function drawLine(
   ctx: CanvasRenderingContext2D,
   prepared: PreparedLine,
   meta: Meta,
-  t: number
+  t: number,
+  vars: VarValues
 ): void {
-  const sx1 = prepared.compiledX1.evaluate(t);
-  const sy1 = prepared.compiledY1.evaluate(t);
-  const sx2 = prepared.compiledX2.evaluate(t);
-  const sy2 = prepared.compiledY2.evaluate(t);
+  const sx1 = prepared.compiledX1.evaluate(t, undefined, vars);
+  const sy1 = prepared.compiledY1.evaluate(t, undefined, vars);
+  const sx2 = prepared.compiledX2.evaluate(t, undefined, vars);
+  const sy2 = prepared.compiledY2.evaluate(t, undefined, vars);
 
   const [cx1, cy1] = toCanvas(sx1, sy1, meta);
   const [cx2, cy2] = toCanvas(sx2, sy2, meta);
@@ -201,12 +204,14 @@ function drawLine(
 
 /**
  * Clear the canvas and draw all active objects for the given time t.
+ * vars contains the current runtime values of all spec variables.
  */
 export function renderFrame(
   ctx: CanvasRenderingContext2D,
   prepared: PreparedScene,
   t: number,
-  background = "#0a0a0f"
+  background = "#0a0a0f",
+  vars: VarValues = {}
 ): void {
   const { meta, objects } = prepared;
 
@@ -218,9 +223,9 @@ export function renderFrame(
     if (!isActive(obj.source.timeline, t)) continue;
 
     if (obj.kind === "parametric_path") {
-      drawParametricPath(ctx, obj, meta, t);
+      drawParametricPath(ctx, obj, meta, t, vars);
     } else if (obj.kind === "line") {
-      drawLine(ctx, obj, meta, t);
+      drawLine(ctx, obj, meta, t, vars);
     }
   }
 }

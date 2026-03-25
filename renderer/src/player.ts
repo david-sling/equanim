@@ -1,3 +1,4 @@
+import type { Variables, VarValues } from "./types.js";
 import type { PreparedScene } from "./render.js";
 import { renderFrame } from "./render.js";
 
@@ -16,9 +17,21 @@ export interface Player {
   pause(): void;
   reset(): void;
   seek(t: number): void;
+  /** Replace the current variable values and immediately re-render. */
+  setVariables(vars: VarValues): void;
+  getVariables(): VarValues;
   getState(): PlayerState;
   getTime(): number;
   dispose(): void;
+}
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+/** Extract default values from a spec's variables block. */
+export function defaultVarValues(variables: Variables = {}): VarValues {
+  return Object.fromEntries(
+    Object.entries(variables).map(([k, def]) => [k, def.default])
+  );
 }
 
 // ─── State machine ────────────────────────────────────────────────────────────
@@ -52,7 +65,9 @@ export function canTransition(from: PlayerState, to: PlayerState): boolean {
 export function createPlayer(
   canvas: HTMLCanvasElement,
   prepared: PreparedScene,
-  options: PlayerOptions = {}
+  options: PlayerOptions = {},
+  /** Initial variable values. Typically from defaultVarValues(spec.variables). */
+  initialVars: VarValues = {}
 ): Player {
   const ctx = canvas.getContext("2d");
   if (!ctx) throw new Error("Could not get 2D context from canvas");
@@ -65,6 +80,7 @@ export function createPlayer(
   let state: PlayerState = "idle";
   let t = 0;
   let rafHandle: number | null = null;
+  let vars: VarValues = { ...initialVars };
 
   // ── Internal helpers ────────────────────────────────────────────────────────
 
@@ -74,17 +90,21 @@ export function createPlayer(
     onStateChange?.(next);
   }
 
+  function draw(): void {
+    renderFrame(ctx2d, prepared, t, background, vars);
+  }
+
   function tick(): void {
     if (state !== "playing") return;
 
-    renderFrame(ctx2d, prepared, t, background);
+    draw();
     onTimeUpdate?.(t);
 
     t += dt;
 
     if (t >= meta.duration) {
       t = meta.duration;
-      renderFrame(ctx2d, prepared, t, background);
+      draw();
       onTimeUpdate?.(t);
       setState("ended");
       rafHandle = null;
@@ -102,14 +122,13 @@ export function createPlayer(
   }
 
   // ── Render initial frame (so canvas isn't blank before play) ───────────────
-  renderFrame(ctx2d, prepared, 0, background);
+  draw();
 
   // ── Public API ──────────────────────────────────────────────────────────────
 
   return {
     play() {
       if (state === "ended") {
-        // Allow replay from end by resetting first
         t = 0;
         setState("idle");
       }
@@ -128,17 +147,26 @@ export function createPlayer(
       stopRaf();
       t = 0;
       setState("idle");
-      renderFrame(ctx2d, prepared, 0, background);
+      draw();
       onTimeUpdate?.(0);
     },
 
     seek(newT: number) {
       t = Math.max(0, Math.min(newT, meta.duration));
-      // Render the seeked frame immediately (even during pause/idle)
-      renderFrame(ctx2d, prepared, t, background);
+      draw();
       onTimeUpdate?.(t);
-      // If we were ended and seek back, move to paused
       if (state === "ended" && t < meta.duration) setState("paused");
+    },
+
+    setVariables(newVars: VarValues) {
+      vars = { ...newVars };
+      // Re-render the current frame so changes are immediately visible,
+      // even during pause or idle.
+      draw();
+    },
+
+    getVariables(): VarValues {
+      return { ...vars };
     },
 
     getState() {

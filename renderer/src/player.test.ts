@@ -8,10 +8,10 @@
  *     (we control tick() manually by stubbing requestAnimationFrame)
  */
 
-import { canTransition, TRANSITIONS, createPlayer } from "./player.js";
+import { canTransition, TRANSITIONS, createPlayer, defaultVarValues } from "./player.js";
 import type { PlayerState } from "./player.js";
 import { prepareScene } from "./render.js";
-import type { AnimSpec } from "./types.js";
+import type { AnimSpec, Variables } from "./types.js";
 
 // ─── Test harness ─────────────────────────────────────────────────────────────
 
@@ -418,6 +418,78 @@ console.log("\n--- createPlayer: onStateChange fires correctly ---");
   assert("state changes: idle (reset)", log[3], "idle");
   assert("state changes: playing", log[4], "playing");
   assert("state changes: ended", log[5], "ended");
+
+  player.dispose();
+}
+
+// ─── defaultVarValues ────────────────────────────────────────────────────────
+
+console.log("\n--- defaultVarValues ---");
+{
+  const vars: Variables = {
+    speed:  { default: 1.5, min: 0, max: 5 },
+    scale:  { default: 100, min: 10, max: 200, step: 10 },
+    phase:  { default: 0,   min: -3.14, max: 3.14, step: 0.01 },
+  };
+  const dv = defaultVarValues(vars);
+  assert("speed default = 1.5",  dv["speed"]!,  1.5);
+  assert("scale default = 100",  dv["scale"]!,  100);
+  assert("phase default = 0",    dv["phase"]!,  0);
+  assert("empty variables → empty object", Object.keys(defaultVarValues({})).length, 0);
+}
+
+// ─── createPlayer: setVariables / getVariables ───────────────────────────────
+
+console.log("\n--- createPlayer: setVariables ---");
+{
+  installMockRaf();
+  const { canvas } = makeMockCanvas();
+  const player = createPlayer(canvas, prepared, {}, { x: 1, y: 2 });
+
+  // getVariables returns a copy of initial vars
+  const vars = player.getVariables();
+  assert("getVariables: x=1",  vars["x"]!, 1);
+  assert("getVariables: y=2",  vars["y"]!, 2);
+
+  // setVariables replaces the values
+  player.setVariables({ x: 99, y: 0, z: 42 });
+  const updated = player.getVariables();
+  assert("after setVariables: x=99", updated["x"]!, 99);
+  assert("after setVariables: z=42", updated["z"]!, 42);
+
+  // getVariables returns a defensive copy — mutating it doesn't affect player
+  updated["x"] = 0;
+  assert("getVariables copy is independent", player.getVariables()["x"]!, 99);
+
+  // setVariables while playing doesn't crash and re-renders
+  player.play();
+  player.setVariables({ x: 7 });
+  assert("setVariables while playing: state still playing", player.getState(), "playing");
+  assert("setVariables while playing: vars updated", player.getVariables()["x"]!, 7);
+
+  player.dispose();
+}
+
+console.log("\n--- createPlayer: initialVars from spec defaults ---");
+{
+  installMockRaf();
+  const { canvas } = makeMockCanvas();
+
+  const specWithVars: AnimSpec = {
+    ...minimalSpec,
+    variables: {
+      speed: { default: 2.5, min: 0, max: 10 },
+      color: { default: 128, min: 0, max: 255 },
+    },
+  };
+
+  const prepared2 = prepareScene(specWithVars);
+  const initVars = defaultVarValues(specWithVars.variables ?? {});
+  const player = createPlayer(canvas, prepared2, {}, initVars);
+
+  const vars = player.getVariables();
+  assert("spec default: speed=2.5", vars["speed"]!, 2.5);
+  assert("spec default: color=128", vars["color"]!, 128);
 
   player.dispose();
 }

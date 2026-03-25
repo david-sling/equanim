@@ -40,7 +40,7 @@
         cursor: crosshair;
       }
 
-      /* ── Controls ── */
+      /* ── Transport controls ── */
       .controls {
         display: flex;
         align-items: center;
@@ -60,15 +60,8 @@
         transition: background 0.1s, color 0.1s;
       }
 
-      button:hover:not(:disabled) {
-        background: #2c2c3c;
-        color: #eee;
-      }
-
-      button:disabled {
-        opacity: 0.35;
-        cursor: default;
-      }
+      button:hover:not(:disabled) { background: #2c2c3c; color: #eee; }
+      button:disabled { opacity: 0.35; cursor: default; }
 
       #seek-bar {
         width: 320px;
@@ -92,10 +85,51 @@
         letter-spacing: 0.06em;
       }
 
-      .state-idle    { border-color: #444; color: #888; }
-      .state-playing { border-color: #44aaff55; color: #44aaff; }
-      .state-paused  { border-color: #ffaa4455; color: #ffaa44; }
-      .state-ended   { border-color: #66aa6655; color: #66aa66; }
+      .state-idle    { border-color: #444;       color: #888; }
+      .state-playing { border-color: #44aaff55;  color: #44aaff; }
+      .state-paused  { border-color: #ffaa4455;  color: #ffaa44; }
+      .state-ended   { border-color: #66aa6655;  color: #66aa66; }
+
+      /* ── Variables panel ── */
+      #variables-panel {
+        display: none; /* shown when spec has variables */
+        flex-direction: column;
+        gap: 8px;
+        width: 100%;
+        max-width: 1000px;
+        background: #12121a;
+        border: 1px solid #2a2a38;
+        border-radius: 4px;
+        padding: 14px 16px;
+      }
+
+      .var-row {
+        display: grid;
+        grid-template-columns: 160px 1fr 56px;
+        align-items: center;
+        gap: 10px;
+      }
+
+      .var-label {
+        color: #aaa;
+        font-size: 12px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      .var-slider {
+        width: 100%;
+        accent-color: #44aaff;
+        cursor: pointer;
+      }
+
+      .var-readout {
+        color: #44aaff;
+        font-size: 12px;
+        text-align: right;
+        font-variant-numeric: tabular-nums;
+      }
 
       /* ── Spec editor ── */
       details {
@@ -162,6 +196,9 @@
       <span id="time-display">0.00s</span>
       <span id="state-display" class="state-badge state-idle">idle</span>
     </div>
+
+    <!-- Variables panel — populated by main.ts when spec has variables -->
+    <div id="variables-panel"></div>
 
     <details>
       <summary>▸ Load spec JSON</summary>

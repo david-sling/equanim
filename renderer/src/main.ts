@@ -1,7 +1,7 @@
-import type { AnimSpec } from "./types.js";
+import type { AnimSpec, Variables, VarValues } from "./types.js";
 import { prepareScene } from "./render.js";
-import { createPlayer } from "./player.js";
-import type { PlayerState } from "./player.js";
+import { createPlayer, defaultVarValues } from "./player.js";
+import type { Player, PlayerState } from "./player.js";
 
 // ─── DOM refs ─────────────────────────────────────────────────────────────────
 
@@ -15,69 +15,117 @@ const stateDisplay = document.getElementById("state-display") as HTMLSpanElement
 const specInput = document.getElementById("spec-input") as HTMLTextAreaElement;
 const loadBtn = document.getElementById("btn-load") as HTMLButtonElement;
 const errorDisplay = document.getElementById("error-display") as HTMLDivElement;
+const variablesPanel = document.getElementById("variables-panel") as HTMLDivElement;
 
 // ─── State ────────────────────────────────────────────────────────────────────
 
-let currentPlayer = createPlayer(
-  canvas,
-  prepareScene(await loadDefaultSpec()),
-  { onStateChange: updateUI, onTimeUpdate: updateTime }
+let currentPlayer: Player;
+let currentVars: VarValues = {};
+
+// ─── Bootstrap ────────────────────────────────────────────────────────────────
+
+const defaultSpec = await fetch("./specs/dampened-wave.json").then(
+  (r) => r.json() as Promise<AnimSpec>
 );
+specInput.value = JSON.stringify(defaultSpec, null, 2);
+loadSpec(defaultSpec);
 
-// ─── Default spec loader ──────────────────────────────────────────────────────
+// ─── Variable UI ─────────────────────────────────────────────────────────────
 
-async function loadDefaultSpec(): Promise<AnimSpec> {
-  const res = await fetch("./specs/dampened-wave.json");
-  if (!res.ok) throw new Error("Failed to load default spec");
-  return res.json() as Promise<AnimSpec>;
-}
+function buildVariableSliders(variables: Variables): void {
+  variablesPanel.innerHTML = "";
 
-// ─── UI update ────────────────────────────────────────────────────────────────
-
-function updateUI(state: PlayerState): void {
-  stateDisplay.textContent = state;
-  stateDisplay.className = `state-badge state-${state}`;
-
-  playBtn.disabled = state === "playing";
-  pauseBtn.disabled = state !== "playing";
-  resetBtn.disabled = false;
-}
-
-function updateTime(t: number): void {
-  const duration = currentPlayer ? parseFloat(seekBar.max) : 3;
-  timeDisplay.textContent = `${t.toFixed(2)}s`;
-  seekBar.value = String(t);
-  // Don't fight the user if they're dragging
-  if (document.activeElement !== seekBar) {
-    seekBar.value = String(t);
+  const entries = Object.entries(variables);
+  if (entries.length === 0) {
+    variablesPanel.style.display = "none";
+    return;
   }
+
+  variablesPanel.style.display = "flex";
+
+  for (const [key, def] of entries) {
+    const step = def.step ?? (def.max - def.min) / 100;
+    const value = currentVars[key] ?? def.default;
+
+    const row = document.createElement("div");
+    row.className = "var-row";
+
+    const label = document.createElement("label");
+    label.className = "var-label";
+    label.textContent = def.label ?? key;
+    label.htmlFor = `var-${key}`;
+
+    const slider = document.createElement("input");
+    slider.type = "range";
+    slider.id = `var-${key}`;
+    slider.className = "var-slider";
+    slider.min = String(def.min);
+    slider.max = String(def.max);
+    slider.step = String(step);
+    slider.value = String(value);
+
+    const readout = document.createElement("span");
+    readout.className = "var-readout";
+    readout.textContent = formatValue(value, step);
+
+    slider.addEventListener("input", () => {
+      const newVal = parseFloat(slider.value);
+      readout.textContent = formatValue(newVal, step);
+      currentVars = { ...currentVars, [key]: newVal };
+      currentPlayer.setVariables(currentVars);
+    });
+
+    row.appendChild(label);
+    row.appendChild(slider);
+    row.appendChild(readout);
+    variablesPanel.appendChild(row);
+  }
+}
+
+/** Format a number to a reasonable number of decimal places based on step size. */
+function formatValue(v: number, step: number): string {
+  const decimals = step < 0.01 ? 3 : step < 0.1 ? 2 : step < 1 ? 1 : 0;
+  return v.toFixed(decimals);
 }
 
 // ─── Spec loading ─────────────────────────────────────────────────────────────
 
-function loadSpec(jsonText: string): void {
+function loadSpec(spec: AnimSpec): void;
+function loadSpec(jsonText: string): void;
+function loadSpec(input: AnimSpec | string): void {
   errorDisplay.textContent = "";
   errorDisplay.style.display = "none";
 
   let spec: AnimSpec;
-  try {
-    spec = JSON.parse(jsonText) as AnimSpec;
-  } catch (e) {
-    showError(`JSON parse error: ${(e as Error).message}`);
-    return;
+  if (typeof input === "string") {
+    try {
+      spec = JSON.parse(input) as AnimSpec;
+    } catch (e) {
+      showError(`JSON parse error: ${(e as Error).message}`);
+      return;
+    }
+  } else {
+    spec = input;
   }
 
   try {
-    currentPlayer.dispose();
+    currentPlayer?.dispose();
     const prepared = prepareScene(spec);
+
     canvas.width = spec.meta.width;
     canvas.height = spec.meta.height;
     seekBar.max = String(spec.meta.duration);
 
-    currentPlayer = createPlayer(canvas, prepared, {
-      onStateChange: updateUI,
-      onTimeUpdate: updateTime,
-    });
+    // Initialize variable values from spec defaults
+    currentVars = defaultVarValues(spec.variables ?? {});
+    buildVariableSliders(spec.variables ?? {});
+
+    currentPlayer = createPlayer(
+      canvas,
+      prepared,
+      { onStateChange: updateUI, onTimeUpdate: updateTime },
+      currentVars
+    );
 
     updateUI("idle");
     updateTime(0);
@@ -91,7 +139,23 @@ function showError(msg: string): void {
   errorDisplay.style.display = "block";
 }
 
-// ─── Event listeners ──────────────────────────────────────────────────────────
+// ─── UI updates ──────────────────────────────────────────────────────────────
+
+function updateUI(state: PlayerState): void {
+  stateDisplay.textContent = state;
+  stateDisplay.className = `state-badge state-${state}`;
+  playBtn.disabled = state === "playing";
+  pauseBtn.disabled = state !== "playing";
+}
+
+function updateTime(t: number): void {
+  timeDisplay.textContent = `${t.toFixed(2)}s`;
+  if (document.activeElement !== seekBar) {
+    seekBar.value = String(t);
+  }
+}
+
+// ─── Transport listeners ──────────────────────────────────────────────────────
 
 playBtn.addEventListener("click", () => currentPlayer.play());
 pauseBtn.addEventListener("click", () => currentPlayer.pause());
@@ -105,13 +169,17 @@ loadBtn.addEventListener("click", () => {
   loadSpec(specInput.value.trim());
 });
 
-// Allow drag-and-drop JSON files onto the canvas
+// Drag-and-drop JSON files onto the canvas
 canvas.addEventListener("dragover", (e) => e.preventDefault());
 canvas.addEventListener("drop", (e) => {
   e.preventDefault();
   const file = e.dataTransfer?.files[0];
   if (!file) return;
   const reader = new FileReader();
-  reader.onload = () => loadSpec(reader.result as string);
+  reader.onload = () => {
+    const text = reader.result as string;
+    specInput.value = text;
+    loadSpec(text);
+  };
   reader.readAsText(file);
 });

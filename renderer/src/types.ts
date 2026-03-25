@@ -3,6 +3,15 @@
 export interface AnimSpec {
   spec: string; // "animspec/0.1"
   meta: Meta;
+  /**
+   * Global runtime variables exposed to the user as controls (sliders, etc.).
+   * Variable values are injected into every object's expression scope,
+   * overriding same-named entries in an object's `params` block.
+   *
+   * Consumers (players, editors) read `default` on load and let users
+   * adjust values within [min, max] at step increments.
+   */
+  variables?: Variables;
   scene: Scene;
 }
 
@@ -63,6 +72,30 @@ export type Params = Record<string, number>;
  * Map of function name → definition.
  */
 export type Functions = Record<string, FunctionDef>;
+
+/**
+ * A single user-controllable variable.
+ */
+export interface VariableDef {
+  /** Human-readable label for the control. Defaults to the key name. */
+  label?: string;
+  default: number;
+  min: number;
+  max: number;
+  /** Slider step increment. Defaults to (max - min) / 100. */
+  step?: number;
+}
+
+/**
+ * Top-level variables block. Keys are the names referenced in expressions.
+ */
+export type Variables = Record<string, VariableDef>;
+
+/**
+ * Runtime values of variables — what gets injected into expression scope.
+ * Produced by reading current slider positions.
+ */
+export type VarValues = Record<string, number>;
 
 // ─── Primitives ───────────────────────────────────────────────────────────────
 
