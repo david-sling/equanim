@@ -2,9 +2,15 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <title>AnimSpec Renderer</title>
+    <title>Equanim Renderer</title>
     <style>
-      *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+      *,
+      *::before,
+      *::after {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
 
       body {
         background: #0d0d12;
@@ -57,11 +63,19 @@
         cursor: pointer;
         font-family: inherit;
         font-size: 12px;
-        transition: background 0.1s, color 0.1s;
+        transition:
+          background 0.1s,
+          color 0.1s;
       }
 
-      button:hover:not(:disabled) { background: #2c2c3c; color: #eee; }
-      button:disabled { opacity: 0.35; cursor: default; }
+      button:hover:not(:disabled) {
+        background: #2c2c3c;
+        color: #eee;
+      }
+      button:disabled {
+        opacity: 0.35;
+        cursor: default;
+      }
 
       #seek-bar {
         width: 320px;
@@ -85,10 +99,22 @@
         letter-spacing: 0.06em;
       }
 
-      .state-idle    { border-color: #444;       color: #888; }
-      .state-playing { border-color: #44aaff55;  color: #44aaff; }
-      .state-paused  { border-color: #ffaa4455;  color: #ffaa44; }
-      .state-ended   { border-color: #66aa6655;  color: #66aa66; }
+      .state-idle {
+        border-color: #444;
+        color: #888;
+      }
+      .state-playing {
+        border-color: #44aaff55;
+        color: #44aaff;
+      }
+      .state-paused {
+        border-color: #ffaa4455;
+        color: #ffaa44;
+      }
+      .state-ended {
+        border-color: #66aa6655;
+        color: #66aa66;
+      }
 
       /* ── Variables panel ── */
       #variables-panel {
@@ -144,7 +170,9 @@
         padding: 4px 0;
       }
 
-      summary:hover { color: #aaa; }
+      summary:hover {
+        color: #aaa;
+      }
 
       .spec-editor {
         display: flex;
@@ -167,7 +195,9 @@
         tab-size: 2;
       }
 
-      textarea:focus { outline: 1px solid #44aaff55; }
+      textarea:focus {
+        outline: 1px solid #44aaff55;
+      }
 
       #error-display {
         display: none;
@@ -182,7 +212,7 @@
     </style>
   </head>
   <body>
-    <h1>AnimSpec Renderer</h1>
+    <h1>Equanim Renderer</h1>
 
     <div id="canvas-wrap">
       <canvas id="canvas" width="1000" height="600"></canvas>
@@ -203,7 +233,10 @@
     <details>
       <summary>▸ Load spec JSON</summary>
       <div class="spec-editor">
-        <textarea id="spec-input" placeholder="Paste AnimSpec JSON here…"></textarea>
+        <textarea
+          id="spec-input"
+          placeholder="Paste Equanim JSON here…"
+        ></textarea>
         <div id="error-display"></div>
         <button id="btn-load" style="align-self: flex-start">Load spec</button>
       </div>

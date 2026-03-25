@@ -1,7 +1,7 @@
 // ─── Spec root ────────────────────────────────────────────────────────────────
 
-export interface AnimSpec {
-  spec: string; // "animspec/0.1"
+export interface Equanim {
+  spec: string; // "equanim/0.1"
   meta: Meta;
   /**
    * Global runtime variables exposed to the user as controls (sliders, etc.).
@@ -47,7 +47,7 @@ export interface Scene {
  */
 export interface Timeline {
   start: number; // 0–1
-  end: number;   // 0–1
+  end: number; // 0–1
 }
 
 export interface Style {

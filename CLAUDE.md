@@ -1,4 +1,4 @@
-# AnimSpec — Renderer Build Handoff
+# Equanim — Renderer Build Handoff
 
 ## What is this project?
 
@@ -22,14 +22,14 @@ npx vite          # dev server
 
 ### Architecture
 
-| File | Responsibility |
-| --- | --- |
-| `src/types.ts` | TypeScript interfaces mirroring the spec schema |
+| File               | Responsibility                                                                                     |
+| ------------------ | -------------------------------------------------------------------------------------------------- |
+| `src/types.ts`     | TypeScript interfaces mirroring the spec schema                                                    |
 | `src/evaluator.ts` | mathjs expression compiler; builds per-object evaluators from `params` + `functions` + `variables` |
-| `src/render.ts` | Coordinate transform, scene preparation, per-frame draw logic |
-| `src/player.ts` | `requestAnimationFrame` loop, play/pause/reset state machine |
-| `src/main.ts` | Entry point; wires canvas, transport controls, variable sliders |
-| `specs/` | Example spec JSON files |
+| `src/render.ts`    | Coordinate transform, scene preparation, per-frame draw logic                                      |
+| `src/player.ts`    | `requestAnimationFrame` loop, play/pause/reset state machine                                       |
+| `src/main.ts`      | Entry point; wires canvas, transport controls, variable sliders                                    |
+| `specs/`           | Example spec JSON files                                                                            |
 
 ### Tests
 

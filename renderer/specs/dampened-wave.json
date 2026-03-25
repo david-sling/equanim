@@ -1,5 +1,5 @@
 {
-  "spec": "animspec/0.1",
+  "spec": "equanim/0.1",
   "meta": {
     "title": "Dampened Wave Propagation",
     "duration": 3.0,
@@ -10,10 +10,34 @@
     "origin": "center"
   },
   "variables": {
-    "amplitude": { "label": "Amplitude",         "default": 80,   "min": 10,   "max": 200,  "step": 1    },
-    "decay":     { "label": "Decay rate",         "default": 5.4,  "min": 0.1,  "max": 15,   "step": 0.1  },
-    "k":         { "label": "Wave number",        "default": 0.018,"min": 0.005,"max": 0.08, "step": 0.001 },
-    "omega":     { "label": "Angular frequency",  "default": 18.8, "min": 1,    "max": 30,   "step": 0.1  }
+    "amplitude": {
+      "label": "Amplitude",
+      "default": 80,
+      "min": 10,
+      "max": 200,
+      "step": 1
+    },
+    "decay": {
+      "label": "Decay rate",
+      "default": 5.4,
+      "min": 0.1,
+      "max": 15,
+      "step": 0.1
+    },
+    "k": {
+      "label": "Wave number",
+      "default": 0.018,
+      "min": 0.005,
+      "max": 0.08,
+      "step": 0.001
+    },
+    "omega": {
+      "label": "Angular frequency",
+      "default": 18.8,
+      "min": 1,
+      "max": 30,
+      "step": 0.1
+    }
   },
   "scene": {
     "id": "root",
@@ -36,7 +60,10 @@
         },
         "functions": {
           "A": { "args": ["t"], "body": "amplitude * exp(-decay * t)" },
-          "E": { "args": ["s", "t"], "body": "clamp(omega * t - abs(k * s), 0, 1)" }
+          "E": {
+            "args": ["s", "t"],
+            "body": "clamp(omega * t - abs(k * s), 0, 1)"
+          }
         },
         "timeline": {
           "start": 0.0,

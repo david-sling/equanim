@@ -1,5 +1,5 @@
 import type {
-  AnimSpec,
+  Equanim,
   Meta,
   SceneObject,
   ParametricPath,
@@ -28,7 +28,7 @@ import { buildEvaluator, type CompiledExpr } from "./evaluator.js";
 export function toCanvas(
   specX: number,
   specY: number,
-  meta: Meta
+  meta: Meta,
 ): [number, number] {
   if (meta.origin === "center") {
     return [meta.width / 2 + specX, meta.height / 2 - specY];
@@ -70,10 +70,10 @@ export function isActive(timeline: Timeline, tNorm: number): boolean {
 export function computeLocalT(
   T: number,
   timeline: Timeline,
-  duration: number
+  duration: number,
 ): number {
   const tStart = timeline.start * duration;
-  const tEnd   = timeline.end   * duration;
+  const tEnd = timeline.end * duration;
   if (tEnd <= tStart) return 0;
   return Math.max(0, Math.min(1, (T - tStart) / (tEnd - tStart)));
 }
@@ -136,7 +136,7 @@ function prepareObject(obj: SceneObject): PreparedObject {
   throw new Error(`Unknown object type: ${(obj as SceneObject).type}`);
 }
 
-export function prepareScene(spec: AnimSpec): PreparedScene {
+export function prepareScene(spec: Equanim): PreparedScene {
   return {
     meta: spec.meta,
     objects: spec.scene.objects.map(prepareObject),
@@ -159,7 +159,7 @@ export function generateSamples(
   prepared: PreparedParametricPath,
   meta: Meta,
   T: number,
-  vars: VarValues = {}
+  vars: VarValues = {},
 ): Array<[number, number]> {
   const { source, compiledX, compiledY } = prepared;
   const t = computeLocalT(T, source.timeline, meta.duration);
@@ -182,7 +182,7 @@ export function generateSamples(
 
 function applyStyle(
   ctx: CanvasRenderingContext2D,
-  style: SceneObject["style"]
+  style: SceneObject["style"],
 ): void {
   ctx.strokeStyle = style.stroke ?? "white";
   ctx.lineWidth = style.stroke_width ?? 1;
@@ -194,7 +194,7 @@ function drawParametricPath(
   prepared: PreparedParametricPath,
   meta: Meta,
   T: number,
-  vars: VarValues
+  vars: VarValues,
 ): void {
   const points = generateSamples(prepared, meta, T, vars);
   if (points.length === 0) return;
@@ -220,7 +220,7 @@ function drawLine(
   prepared: PreparedLine,
   meta: Meta,
   T: number,
-  vars: VarValues
+  vars: VarValues,
 ): void {
   const t = computeLocalT(T, prepared.source.timeline, meta.duration);
 
@@ -255,7 +255,7 @@ export function renderFrame(
   prepared: PreparedScene,
   T: number,
   background = "#0a0a0f",
-  vars: VarValues = {}
+  vars: VarValues = {},
 ): void {
   const { meta, objects } = prepared;
 

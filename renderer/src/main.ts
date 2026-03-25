@@ -1,4 +1,4 @@
-import type { AnimSpec, Variables, VarValues } from "./types.js";
+import type { Equanim, Variables, VarValues } from "./types.js";
 import { prepareScene } from "./render.js";
 import { createPlayer, defaultVarValues } from "./player.js";
 import type { Player, PlayerState } from "./player.js";
@@ -11,11 +11,15 @@ const pauseBtn = document.getElementById("btn-pause") as HTMLButtonElement;
 const resetBtn = document.getElementById("btn-reset") as HTMLButtonElement;
 const timeDisplay = document.getElementById("time-display") as HTMLSpanElement;
 const seekBar = document.getElementById("seek-bar") as HTMLInputElement;
-const stateDisplay = document.getElementById("state-display") as HTMLSpanElement;
+const stateDisplay = document.getElementById(
+  "state-display",
+) as HTMLSpanElement;
 const specInput = document.getElementById("spec-input") as HTMLTextAreaElement;
 const loadBtn = document.getElementById("btn-load") as HTMLButtonElement;
 const errorDisplay = document.getElementById("error-display") as HTMLDivElement;
-const variablesPanel = document.getElementById("variables-panel") as HTMLDivElement;
+const variablesPanel = document.getElementById(
+  "variables-panel",
+) as HTMLDivElement;
 
 // ─── State ────────────────────────────────────────────────────────────────────
 
@@ -25,7 +29,7 @@ let currentVars: VarValues = {};
 // ─── Bootstrap ────────────────────────────────────────────────────────────────
 
 const defaultSpec = await fetch("./specs/dampened-wave.json").then(
-  (r) => r.json() as Promise<AnimSpec>
+  (r) => r.json() as Promise<Equanim>,
 );
 specInput.value = JSON.stringify(defaultSpec, null, 2);
 loadSpec(defaultSpec);
@@ -90,16 +94,16 @@ function formatValue(v: number, step: number): string {
 
 // ─── Spec loading ─────────────────────────────────────────────────────────────
 
-function loadSpec(spec: AnimSpec): void;
+function loadSpec(spec: Equanim): void;
 function loadSpec(jsonText: string): void;
-function loadSpec(input: AnimSpec | string): void {
+function loadSpec(input: Equanim | string): void {
   errorDisplay.textContent = "";
   errorDisplay.style.display = "none";
 
-  let spec: AnimSpec;
+  let spec: Equanim;
   if (typeof input === "string") {
     try {
-      spec = JSON.parse(input) as AnimSpec;
+      spec = JSON.parse(input) as Equanim;
     } catch (e) {
       showError(`JSON parse error: ${(e as Error).message}`);
       return;
@@ -124,7 +128,7 @@ function loadSpec(input: AnimSpec | string): void {
       canvas,
       prepared,
       { onStateChange: updateUI, onTimeUpdate: updateTime },
-      currentVars
+      currentVars,
     );
 
     updateUI("idle");

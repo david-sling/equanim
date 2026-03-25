@@ -8,10 +8,15 @@
  *     (we control tick() manually by stubbing requestAnimationFrame)
  */
 
-import { canTransition, TRANSITIONS, createPlayer, defaultVarValues } from "./player.js";
+import {
+  canTransition,
+  TRANSITIONS,
+  createPlayer,
+  defaultVarValues,
+} from "./player.js";
 import type { PlayerState } from "./player.js";
 import { prepareScene } from "./render.js";
-import type { AnimSpec, Variables } from "./types.js";
+import type { Equanim, Variables } from "./types.js";
 
 // ─── Test harness ─────────────────────────────────────────────────────────────
 
@@ -20,8 +25,10 @@ let failed = 0;
 
 function assert(label: string, actual: unknown, expected: unknown) {
   const ok = actual === expected;
-  if (ok) { console.log(`  ✓ ${label}`); passed++; }
-  else {
+  if (ok) {
+    console.log(`  ✓ ${label}`);
+    passed++;
+  } else {
     console.error(`  ✗ ${label}`);
     console.error(`    expected: ${JSON.stringify(expected)}`);
     console.error(`    actual:   ${JSON.stringify(actual)}`);
@@ -31,9 +38,13 @@ function assert(label: string, actual: unknown, expected: unknown) {
 
 function assertType(label: string, actual: unknown, expected: string) {
   const ok = typeof actual === expected;
-  if (ok) { console.log(`  ✓ ${label}`); passed++; }
-  else {
-    console.error(`  ✗ ${label}: expected typeof ${expected}, got ${typeof actual}`);
+  if (ok) {
+    console.log(`  ✓ ${label}`);
+    passed++;
+  } else {
+    console.error(
+      `  ✗ ${label}: expected typeof ${expected}, got ${typeof actual}`,
+    );
     failed++;
   }
 }
@@ -50,13 +61,17 @@ function installMockRaf() {
   const queue: Map<number, FrameRequestCallback> = new Map();
   let nextHandle = 1;
 
-  (globalThis as unknown as Record<string, unknown>).requestAnimationFrame = (cb: FrameRequestCallback): number => {
+  (globalThis as unknown as Record<string, unknown>).requestAnimationFrame = (
+    cb: FrameRequestCallback,
+  ): number => {
     const handle = nextHandle++;
     queue.set(handle, cb);
     return handle;
   };
 
-  (globalThis as unknown as Record<string, unknown>).cancelAnimationFrame = (handle: number): void => {
+  (globalThis as unknown as Record<string, unknown>).cancelAnimationFrame = (
+    handle: number,
+  ): void => {
     queue.delete(handle);
   };
 
@@ -94,12 +109,24 @@ function makeMockCanvas() {
     fillStyle: "",
     strokeStyle: "",
     lineWidth: 1,
-    fillRect(..._: unknown[]) { calls.push("fillRect"); },
-    beginPath() { calls.push("beginPath"); },
-    moveTo(..._: unknown[]) { calls.push("moveTo"); },
-    lineTo(..._: unknown[]) { calls.push("lineTo"); },
-    stroke() { calls.push("stroke"); },
-    fill() { calls.push("fill"); },
+    fillRect(..._: unknown[]) {
+      calls.push("fillRect");
+    },
+    beginPath() {
+      calls.push("beginPath");
+    },
+    moveTo(..._: unknown[]) {
+      calls.push("moveTo");
+    },
+    lineTo(..._: unknown[]) {
+      calls.push("lineTo");
+    },
+    stroke() {
+      calls.push("stroke");
+    },
+    fill() {
+      calls.push("fill");
+    },
   };
   return {
     canvas: {
@@ -114,14 +141,14 @@ function makeMockCanvas() {
 
 // ─── Minimal spec fixture ─────────────────────────────────────────────────────
 
-const minimalSpec: AnimSpec = {
-  spec: "animspec/0.1",
+const minimalSpec: Equanim = {
+  spec: "equanim/0.1",
   meta: {
     title: "Test",
-    duration: 1.0,   // 1 second
+    duration: 1.0, // 1 second
     width: 100,
     height: 100,
-    fps: 10,         // 10 fps → dt=0.1, 10 frames total
+    fps: 10, // 10 fps → dt=0.1, 10 frames total
     coordinate_system: "cartesian",
     origin: "center",
   },
@@ -405,12 +432,12 @@ console.log("\n--- createPlayer: onStateChange fires correctly ---");
     onStateChange: (s) => log.push(s),
   });
 
-  player.play();       // → playing
-  player.pause();      // → paused
-  player.play();       // → playing
-  player.reset();      // → idle
-  player.play();       // → playing
-  raf.tickAll();       // → ended
+  player.play(); // → playing
+  player.pause(); // → paused
+  player.play(); // → playing
+  player.reset(); // → idle
+  player.play(); // → playing
+  raf.tickAll(); // → ended
 
   assert("state changes: playing", log[0], "playing");
   assert("state changes: paused", log[1], "paused");
@@ -427,15 +454,19 @@ console.log("\n--- createPlayer: onStateChange fires correctly ---");
 console.log("\n--- defaultVarValues ---");
 {
   const vars: Variables = {
-    speed:  { default: 1.5, min: 0, max: 5 },
-    scale:  { default: 100, min: 10, max: 200, step: 10 },
-    phase:  { default: 0,   min: -3.14, max: 3.14, step: 0.01 },
+    speed: { default: 1.5, min: 0, max: 5 },
+    scale: { default: 100, min: 10, max: 200, step: 10 },
+    phase: { default: 0, min: -3.14, max: 3.14, step: 0.01 },
   };
   const dv = defaultVarValues(vars);
-  assert("speed default = 1.5",  dv["speed"]!,  1.5);
-  assert("scale default = 100",  dv["scale"]!,  100);
-  assert("phase default = 0",    dv["phase"]!,  0);
-  assert("empty variables → empty object", Object.keys(defaultVarValues({})).length, 0);
+  assert("speed default = 1.5", dv["speed"]!, 1.5);
+  assert("scale default = 100", dv["scale"]!, 100);
+  assert("phase default = 0", dv["phase"]!, 0);
+  assert(
+    "empty variables → empty object",
+    Object.keys(defaultVarValues({})).length,
+    0,
+  );
 }
 
 // ─── createPlayer: setVariables / getVariables ───────────────────────────────
@@ -448,8 +479,8 @@ console.log("\n--- createPlayer: setVariables ---");
 
   // getVariables returns a copy of initial vars
   const vars = player.getVariables();
-  assert("getVariables: x=1",  vars["x"]!, 1);
-  assert("getVariables: y=2",  vars["y"]!, 2);
+  assert("getVariables: x=1", vars["x"]!, 1);
+  assert("getVariables: y=2", vars["y"]!, 2);
 
   // setVariables replaces the values
   player.setVariables({ x: 99, y: 0, z: 42 });
@@ -464,8 +495,16 @@ console.log("\n--- createPlayer: setVariables ---");
   // setVariables while playing doesn't crash and re-renders
   player.play();
   player.setVariables({ x: 7 });
-  assert("setVariables while playing: state still playing", player.getState(), "playing");
-  assert("setVariables while playing: vars updated", player.getVariables()["x"]!, 7);
+  assert(
+    "setVariables while playing: state still playing",
+    player.getState(),
+    "playing",
+  );
+  assert(
+    "setVariables while playing: vars updated",
+    player.getVariables()["x"]!,
+    7,
+  );
 
   player.dispose();
 }
@@ -475,7 +514,7 @@ console.log("\n--- createPlayer: initialVars from spec defaults ---");
   installMockRaf();
   const { canvas } = makeMockCanvas();
 
-  const specWithVars: AnimSpec = {
+  const specWithVars: Equanim = {
     ...minimalSpec,
     variables: {
       speed: { default: 2.5, min: 0, max: 10 },

@@ -1,4 +1,4 @@
-# AnimSpec v0.1
+# Equanim v0.1
 
 A declarative, JSON-based animation specification. Every visual property is a math expression evaluated at runtime. Two time variables are always available: `T` (global seconds, for physics) and `t` (local 0→1 over the object's own timeline window, for portable animations). Specs are designed to be AI-generatable, renderer-agnostic, and human-readable.
 
@@ -8,7 +8,7 @@ A declarative, JSON-based animation specification. Every visual property is a ma
 
 ```json
 {
-  "spec": "animspec/0.1",
+  "spec": "equanim/0.1",
   "meta": { ... },
   "variables": { ... },
   "scene": { ... }
@@ -42,13 +42,13 @@ Optional. Defines named values that are exposed to the user as runtime controls 
 }
 ```
 
-| Field     | Type   | Required | Description                                          |
-| --------- | ------ | -------- | ---------------------------------------------------- |
-| `label`   | string | no       | Human-readable control label. Defaults to key name.  |
-| `default` | number | yes      | Initial value                                        |
-| `min`     | number | yes      | Slider minimum                                       |
-| `max`     | number | yes      | Slider maximum                                       |
-| `step`    | number | no       | Slider step. Defaults to `(max - min) / 100`         |
+| Field     | Type   | Required | Description                                         |
+| --------- | ------ | -------- | --------------------------------------------------- |
+| `label`   | string | no       | Human-readable control label. Defaults to key name. |
+| `default` | number | yes      | Initial value                                       |
+| `min`     | number | yes      | Slider minimum                                      |
+| `max`     | number | yes      | Slider maximum                                      |
+| `step`    | number | no       | Slider step. Defaults to `(max - min) / 100`        |
 
 Variables are intentionally format-agnostic — a consumer can render them as sliders, number inputs, dropdowns, or anything else.
 
@@ -73,35 +73,36 @@ Scenes can be nested. Speed scaling via a `speed` multiplier (e.g. `0.8`, `1.5`)
 
 All primitives share these fields:
 
-| Field      | Type   | Description                                      |
-| ---------- | ------ | ------------------------------------------------ |
-| `id`       | string | Unique identifier within the scene               |
-| `type`     | string | Primitive type name                              |
-| `style`    | object | Visual style (see below)                         |
-| `params`   | object | Named number constants scoped to this object     |
-| `functions`| object | Named sub-expressions (see below)                |
-| `timeline` | object | `{ "start": number, "end": number }` — fractions of total duration, both in [0, 1] |
+| Field       | Type   | Description                                                                        |
+| ----------- | ------ | ---------------------------------------------------------------------------------- |
+| `id`        | string | Unique identifier within the scene                                                 |
+| `type`      | string | Primitive type name                                                                |
+| `style`     | object | Visual style (see below)                                                           |
+| `params`    | object | Named number constants scoped to this object                                       |
+| `functions` | object | Named sub-expressions (see below)                                                  |
+| `timeline`  | object | `{ "start": number, "end": number }` — fractions of total duration, both in [0, 1] |
 
 **Timeline** values are normalised fractions of `meta.duration`, not absolute seconds. This keeps specs portable across different durations and makes relative timing relationships obvious at a glance.
 
-| Value | Meaning |
-| ----- | ------- |
+| Value | Meaning         |
+| ----- | --------------- |
 | `0`   | Animation start |
 | `1`   | Animation end   |
 | `0.5` | Halfway point   |
 
 Examples for a 4-second animation:
+
 - `{ "start": 0, "end": 1 }` → visible the whole time (0–4s)
 - `{ "start": 0, "end": 0.5 }` → first half only (0–2s)
 - `{ "start": 0.25, "end": 0.75 }` → middle half (1–3s)
 
 **Style fields:**
 
-| Field          | Type   | Description          |
-| -------------- | ------ | -------------------- |
-| `stroke`       | string | CSS color string     |
-| `stroke_width` | number | Line width in px     |
-| `fill`         | string | CSS color or `"none"`|
+| Field          | Type   | Description           |
+| -------------- | ------ | --------------------- |
+| `stroke`       | string | CSS color string      |
+| `stroke_width` | number | Line width in px      |
+| `fill`         | string | CSS color or `"none"` |
 
 ---
 
@@ -135,6 +136,7 @@ A path where every point is computed from equations. The spatial parameter `s` s
 ```
 
 **Rendering logic:**
+
 1. For each frame at global time `T`, iterate `s` from `domain.s[0]` to `domain.s[1]` in `samples` steps
 2. Evaluate `x(s, T, t)` and `y(s, T, t)` for each step (`t` = local normalised time for this object)
 3. Draw a polyline through all resulting points
@@ -184,20 +186,20 @@ Equations are math expression strings evaluated at runtime using [mathjs](https:
 
 Two time variables are always available. Use whichever matches your intent:
 
-| Name | Description | When to use |
-| ---- | ----------- | ----------- |
-| `T`  | Global absolute time in seconds | Physics simulations, decay rates, wave equations — anything where the *rate* must match real elapsed time (`exp(-1.8 * T)`, `sin(omega * T)`) |
+| Name | Description                                                      | When to use                                                                                                                                             |
+| ---- | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `T`  | Global absolute time in seconds                                  | Physics simulations, decay rates, wave equations — anything where the _rate_ must match real elapsed time (`exp(-1.8 * T)`, `sin(omega * T)`)           |
 | `t`  | Local normalised time, 0→1 over the object's own timeline window | Portable animations where behaviour should fit the object's duration regardless of where it sits in the timeline (`opacity = t`, `x = lerp(x0, x1, t)`) |
 
 `t = 0` when the object enters; `t = 1` when it exits. If an object spans the full animation (`start: 0, end: 1`), `T` and `t` are proportional, but for objects with shorter windows they differ.
 
-| Name       | Available in         | Description                                      |
-| ---------- | -------------------- | ------------------------------------------------ |
-| `T`        | all equations        | Global time in seconds                           |
-| `t`        | all equations        | Local normalised time 0→1 over this object's window |
-| `s`        | `parametric_path`    | Spatial parameter swept across `domain.s`        |
-| *(params)* | all equations        | Keys from the object's `params` block            |
-| *(vars)*   | all equations        | Keys from the spec's `variables` block (override params) |
+| Name       | Available in      | Description                                              |
+| ---------- | ----------------- | -------------------------------------------------------- |
+| `T`        | all equations     | Global time in seconds                                   |
+| `t`        | all equations     | Local normalised time 0→1 over this object's window      |
+| `s`        | `parametric_path` | Spatial parameter swept across `domain.s`                |
+| _(params)_ | all equations     | Keys from the object's `params` block                    |
+| _(vars)_   | all equations     | Keys from the spec's `variables` block (override params) |
 
 ### Math builtins
 
@@ -232,6 +234,7 @@ Named sub-expressions that accept arguments. Evaluated inline when the parent eq
 ```
 
 Each function definition has:
+
 - `args` — ordered list of argument names (referenced positionally in call sites)
 - `body` — expression string; has access to all scope variables plus the named args
 
@@ -258,7 +261,7 @@ The canonical validation spec. Live file: [`renderer/specs/dampened-wave.json`](
 
 ```json
 {
-  "spec": "animspec/0.1",
+  "spec": "equanim/0.1",
   "meta": {
     "title": "Dampened Wave Propagation",
     "duration": 3.0,
@@ -269,10 +272,34 @@ The canonical validation spec. Live file: [`renderer/specs/dampened-wave.json`](
     "origin": "center"
   },
   "variables": {
-    "amplitude": { "label": "Amplitude",        "default": 80,   "min": 10,   "max": 200,  "step": 1    },
-    "decay":     { "label": "Decay rate",        "default": 1.8,  "min": 0.1,  "max": 6,    "step": 0.05 },
-    "k":         { "label": "Wave number",       "default": 0.018,"min": 0.005,"max": 0.08, "step": 0.001 },
-    "omega":     { "label": "Angular frequency", "default": 6.28, "min": 1,    "max": 20,   "step": 0.1  }
+    "amplitude": {
+      "label": "Amplitude",
+      "default": 80,
+      "min": 10,
+      "max": 200,
+      "step": 1
+    },
+    "decay": {
+      "label": "Decay rate",
+      "default": 1.8,
+      "min": 0.1,
+      "max": 6,
+      "step": 0.05
+    },
+    "k": {
+      "label": "Wave number",
+      "default": 0.018,
+      "min": 0.005,
+      "max": 0.08,
+      "step": 0.001
+    },
+    "omega": {
+      "label": "Angular frequency",
+      "default": 6.28,
+      "min": 1,
+      "max": 20,
+      "step": 0.1
+    }
   },
   "scene": {
     "id": "root",
@@ -287,8 +314,11 @@ The canonical validation spec. Live file: [`renderer/specs/dampened-wave.json`](
           "y": "A(t) * E(s, t) * sin(k * s - omega * t)"
         },
         "functions": {
-          "A": { "args": ["t"],      "body": "amplitude * exp(-decay * t)" },
-          "E": { "args": ["s", "t"], "body": "clamp(omega * t - abs(k * s), 0, 1)" }
+          "A": { "args": ["t"], "body": "amplitude * exp(-decay * t)" },
+          "E": {
+            "args": ["s", "t"],
+            "body": "clamp(omega * t - abs(k * s), 0, 1)"
+          }
         },
         "timeline": { "start": 0.0, "end": 1.0 }
       },
