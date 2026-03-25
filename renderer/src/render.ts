@@ -56,6 +56,28 @@ export function isActive(timeline: Timeline, tNorm: number): boolean {
   );
 }
 
+// ─── Local time ──────────────────────────────────────────────────────────────
+
+/**
+ * Compute the local normalised time t (0→1) for an object at global time T.
+ *
+ * t = 0 when T reaches the object's start; t = 1 when T reaches its end.
+ * Clamped to [0, 1] so expressions remain well-behaved even if evaluated
+ * slightly outside the active window.
+ *
+ * Zero-duration objects (start === end) always return 0.
+ */
+export function computeLocalT(
+  T: number,
+  timeline: Timeline,
+  duration: number
+): number {
+  const tStart = timeline.start * duration;
+  const tEnd   = timeline.end   * duration;
+  if (tEnd <= tStart) return 0;
+  return Math.max(0, Math.min(1, (T - tStart) / (tEnd - tStart)));
+}
+
 // ─── Prepared objects ─────────────────────────────────────────────────────────
 
 /**
@@ -124,8 +146,11 @@ export function prepareScene(spec: AnimSpec): PreparedScene {
 // ─── Per-object sample generation (pure, testable) ───────────────────────────
 
 /**
- * Generate canvas-space points for a parametric path at time t.
+ * Generate canvas-space points for a parametric path at global time T.
  * Returns an array of [canvasX, canvasY] tuples.
+ *
+ * Both T (global seconds) and t (local 0→1 over the object's window) are
+ * injected into the evaluator scope so expressions can use either.
  *
  * Exposed separately so tests can verify point values without
  * needing a real canvas context.
@@ -133,10 +158,11 @@ export function prepareScene(spec: AnimSpec): PreparedScene {
 export function generateSamples(
   prepared: PreparedParametricPath,
   meta: Meta,
-  t: number,
+  T: number,
   vars: VarValues = {}
 ): Array<[number, number]> {
   const { source, compiledX, compiledY } = prepared;
+  const t = computeLocalT(T, source.timeline, meta.duration);
   const [sMin, sMax] = source.domain.s;
   const n = source.domain.samples;
   const step = (sMax - sMin) / (n - 1);
@@ -144,8 +170,8 @@ export function generateSamples(
 
   for (let i = 0; i < n; i++) {
     const s = sMin + i * step;
-    const sx = compiledX.evaluate(t, s, vars);
-    const sy = compiledY.evaluate(t, s, vars);
+    const sx = compiledX.evaluate(T, t, s, vars);
+    const sy = compiledY.evaluate(T, t, s, vars);
     points.push(toCanvas(sx, sy, meta));
   }
 
@@ -167,10 +193,10 @@ function drawParametricPath(
   ctx: CanvasRenderingContext2D,
   prepared: PreparedParametricPath,
   meta: Meta,
-  t: number,
+  T: number,
   vars: VarValues
 ): void {
-  const points = generateSamples(prepared, meta, t, vars);
+  const points = generateSamples(prepared, meta, T, vars);
   if (points.length === 0) return;
 
   applyStyle(ctx, prepared.source.style);
@@ -193,13 +219,15 @@ function drawLine(
   ctx: CanvasRenderingContext2D,
   prepared: PreparedLine,
   meta: Meta,
-  t: number,
+  T: number,
   vars: VarValues
 ): void {
-  const sx1 = prepared.compiledX1.evaluate(t, undefined, vars);
-  const sy1 = prepared.compiledY1.evaluate(t, undefined, vars);
-  const sx2 = prepared.compiledX2.evaluate(t, undefined, vars);
-  const sy2 = prepared.compiledY2.evaluate(t, undefined, vars);
+  const t = computeLocalT(T, prepared.source.timeline, meta.duration);
+
+  const sx1 = prepared.compiledX1.evaluate(T, t, undefined, vars);
+  const sy1 = prepared.compiledY1.evaluate(T, t, undefined, vars);
+  const sx2 = prepared.compiledX2.evaluate(T, t, undefined, vars);
+  const sy2 = prepared.compiledY2.evaluate(T, t, undefined, vars);
 
   const [cx1, cy1] = toCanvas(sx1, sy1, meta);
   const [cx2, cy2] = toCanvas(sx2, sy2, meta);
@@ -214,24 +242,25 @@ function drawLine(
 // ─── Frame render (called once per animation frame) ──────────────────────────
 
 /**
- * Clear the canvas and draw all active objects for the given time t.
+ * Clear the canvas and draw all active objects for the given global time T.
  *
- * t        — absolute time in seconds (passed to evaluators; expressions use real seconds)
- * tNorm    — t / duration (0–1), used for timeline window checks
+ * T        — absolute time in seconds; injected as `T` in every expression scope
+ * tNorm    — T / duration (0–1), used for timeline window checks only
+ * t        — per-object local normalised time (0→1 over each object's window),
+ *             computed inside draw helpers and injected as `t` in their scopes
  * vars     — current runtime values of all spec variables
  */
 export function renderFrame(
   ctx: CanvasRenderingContext2D,
   prepared: PreparedScene,
-  t: number,
+  T: number,
   background = "#0a0a0f",
   vars: VarValues = {}
 ): void {
   const { meta, objects } = prepared;
 
-  // Normalise t to [0, 1] for timeline comparisons.
-  // Expressions still receive absolute t in seconds.
-  const tNorm = meta.duration > 0 ? t / meta.duration : 0;
+  // Normalise T to [0, 1] for timeline comparisons.
+  const tNorm = meta.duration > 0 ? T / meta.duration : 0;
 
   // Clear
   ctx.fillStyle = background;
@@ -241,9 +270,9 @@ export function renderFrame(
     if (!isActive(obj.source.timeline, tNorm)) continue;
 
     if (obj.kind === "parametric_path") {
-      drawParametricPath(ctx, obj, meta, t, vars);
+      drawParametricPath(ctx, obj, meta, T, vars);
     } else if (obj.kind === "line") {
-      drawLine(ctx, obj, meta, t, vars);
+      drawLine(ctx, obj, meta, T, vars);
     }
   }
 }

@@ -1,6 +1,6 @@
 # AnimSpec v0.1
 
-A declarative, JSON-based animation specification. Every visual property is a math expression evaluated at time `t`. Specs are designed to be AI-generatable, renderer-agnostic, and human-readable.
+A declarative, JSON-based animation specification. Every visual property is a math expression evaluated at runtime. Two time variables are always available: `T` (global seconds, for physics) and `t` (local 0→1 over the object's own timeline window, for portable animations). Specs are designed to be AI-generatable, renderer-agnostic, and human-readable.
 
 ---
 
@@ -63,7 +63,7 @@ Variables are intentionally format-agnostic — a consumer can render them as sl
 }
 ```
 
-Scenes can be nested. A child scene inherits a local `t` that runs 0→1 over its own duration. Speed scaling via a `speed` multiplier (e.g. `0.8`, `1.5`) is planned.
+Scenes can be nested. Speed scaling via a `speed` multiplier (e.g. `0.8`, `1.5`) is planned.
 
 ---
 
@@ -107,7 +107,7 @@ Examples for a 4-second animation:
 
 ### `parametric_path`
 
-A path where every point is computed from equations. The spatial parameter `s` sweeps across a domain and `x(s,t)` / `y(s,t)` define where each point lands at time `t`.
+A path where every point is computed from equations. The spatial parameter `s` sweeps across a domain and `x(s,T,t)` / `y(s,T,t)` define where each point lands at a given time.
 
 ```json
 {
@@ -135,8 +135,8 @@ A path where every point is computed from equations. The spatial parameter `s` s
 ```
 
 **Rendering logic:**
-1. For each frame at time `t`, iterate `s` from `domain.s[0]` to `domain.s[1]` in `samples` steps
-2. Evaluate `x(s,t)` and `y(s,t)` for each step
+1. For each frame at global time `T`, iterate `s` from `domain.s[0]` to `domain.s[1]` in `samples` steps
+2. Evaluate `x(s, T, t)` and `y(s, T, t)` for each step (`t` = local normalised time for this object)
 3. Draw a polyline through all resulting points
 
 ---
@@ -163,7 +163,7 @@ A static or animated straight line defined by two endpoints.
 }
 ```
 
-Any equation value can be a constant (`"0"`) or a time-varying expression (`"100 * sin(t)"`).
+Any equation value can be a constant (`"0"`) or a time-varying expression (`"100 * sin(T)"` for physics, `"100 * sin(t * pi)"` for a portable single-cycle sweep).
 
 ---
 
@@ -182,9 +182,19 @@ Equations are math expression strings evaluated at runtime using [mathjs](https:
 
 ### Variables in scope
 
+Two time variables are always available. Use whichever matches your intent:
+
+| Name | Description | When to use |
+| ---- | ----------- | ----------- |
+| `T`  | Global absolute time in seconds | Physics simulations, decay rates, wave equations — anything where the *rate* must match real elapsed time (`exp(-1.8 * T)`, `sin(omega * T)`) |
+| `t`  | Local normalised time, 0→1 over the object's own timeline window | Portable animations where behaviour should fit the object's duration regardless of where it sits in the timeline (`opacity = t`, `x = lerp(x0, x1, t)`) |
+
+`t = 0` when the object enters; `t = 1` when it exits. If an object spans the full animation (`start: 0, end: 1`), `T` and `t` are proportional, but for objects with shorter windows they differ.
+
 | Name       | Available in         | Description                                      |
 | ---------- | -------------------- | ------------------------------------------------ |
-| `t`        | all equations        | Current time in seconds                          |
+| `T`        | all equations        | Global time in seconds                           |
+| `t`        | all equations        | Local normalised time 0→1 over this object's window |
 | `s`        | `parametric_path`    | Spatial parameter swept across `domain.s`        |
 | *(params)* | all equations        | Keys from the object's `params` block            |
 | *(vars)*   | all equations        | Keys from the spec's `variables` block (override params) |
@@ -298,7 +308,7 @@ The canonical validation spec. Live file: [`renderer/specs/dampened-wave.json`](
 
 ## Open questions
 
-- [ ] Scene nesting: does a child scene get local `t` from 0→1 over its duration, or raw seconds?
+- [ ] Scene nesting: does a child scene's `t` run over its own duration, or the parent's?
 - [ ] Should `samples` be adaptive (more samples where curvature is high)?
 - [ ] Export format: `captureStream()` + `MediaRecorder` for WebM is the path of least resistance
 - [ ] Spec validation: should the renderer return structured errors on malformed specs?

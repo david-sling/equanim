@@ -5,11 +5,16 @@ import type { Params, Functions, VarValues } from "./types.js";
 
 /**
  * A compiled expression ready for repeated evaluation.
- * Call .evaluate(t) or .evaluate(t, s) per frame / per sample.
- * Pass vars to inject current variable values (overrides same-named params).
+ *
+ * Both time values are available to every expression:
+ *   T — global time in seconds (wall-clock physics time, e.g. exp(-decay * T))
+ *   t — local normalised time 0→1 over the object's own timeline window
+ *         (e.g. opacity = t  always fades in over the object's duration)
+ *
+ * s is the parametric domain variable (only meaningful for parametric_path).
  */
 export interface CompiledExpr {
-  evaluate(t: number, s?: number, vars?: VarValues): number;
+  evaluate(T: number, t: number, s?: number, vars?: VarValues): number;
 }
 
 /**
@@ -27,7 +32,7 @@ export interface Evaluator {
   /**
    * One-shot evaluate — useful for constants / debugging.
    */
-  evaluate(expr: string, t: number, s?: number, vars?: VarValues): number;
+  evaluate(expr: string, T: number, t: number, s?: number, vars?: VarValues): number;
 }
 
 // ─── Built-in extensions ──────────────────────────────────────────────────────
@@ -49,11 +54,12 @@ const clamp = (x: number, lo: number, hi: number): number =>
  * @param functions - The object's `functions` block (named sub-expressions)
  *
  * Scope layout at evaluation time:
- *   { t, s?, clamp, ...params, ...vars, A: (...args) => ..., E: (...args) => ... }
+ *   { T, t, s?, clamp, ...params, ...vars, A: (...args) => ..., E: (...args) => ... }
  *
+ * T = global absolute time in seconds
+ * t = local normalised time (0→1 over the object's own active window)
  * vars (global variable values) are spread after params, so a variable with
- * the same name as a param will override it. t and s always win over both —
- * they are set last in the function registrations' local scopes.
+ * the same name as a param will override it.
  *
  * Function bodies are compiled once (math.compile) and re-evaluated
  * with a fresh local scope on every call. This avoids re-parsing on every
@@ -72,14 +78,16 @@ export function buildEvaluator(
     })
   );
 
-  // Build a scope object for a given (t, s?, vars?) triple.
-  // Fresh scope per call so t/s/vars don't bleed between samples.
+  // Build a scope object for a given (T, t, s?, vars?) quad.
+  // Fresh scope per call so T/t/s/vars don't bleed between samples.
   function makeScope(
+    T: number,
     t: number,
     s?: number,
     vars: VarValues = {}
   ): Record<string, unknown> {
     const scope: Record<string, unknown> = {
+      T,
       t,
       clamp,
       ...params, // object-level constants
@@ -89,7 +97,7 @@ export function buildEvaluator(
     if (s !== undefined) scope["s"] = s;
 
     // Register each named function as a JS callable in the scope.
-    // When mathjs encounters A(t) it calls scope.A(t).
+    // When mathjs encounters A(T) it calls scope.A(T).
     // The function closes over the outer scope for params/vars,
     // then overrides the named argument slots.
     for (const { name, args, compiled } of compiledFunctions) {
@@ -109,14 +117,14 @@ export function buildEvaluator(
     compile(expr: string): CompiledExpr {
       const compiled = math.compile(expr);
       return {
-        evaluate(t: number, s?: number, vars?: VarValues): number {
-          return compiled.evaluate(makeScope(t, s, vars)) as number;
+        evaluate(T: number, t: number, s?: number, vars?: VarValues): number {
+          return compiled.evaluate(makeScope(T, t, s, vars)) as number;
         },
       };
     },
 
-    evaluate(expr: string, t: number, s?: number, vars?: VarValues): number {
-      return math.evaluate(expr, makeScope(t, s, vars)) as number;
+    evaluate(expr: string, T: number, t: number, s?: number, vars?: VarValues): number {
+      return math.evaluate(expr, makeScope(T, t, s, vars)) as number;
     },
   };
 }
