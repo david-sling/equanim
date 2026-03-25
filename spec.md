@@ -80,7 +80,20 @@ All primitives share these fields:
 | `style`    | object | Visual style (see below)                         |
 | `params`   | object | Named number constants scoped to this object     |
 | `functions`| object | Named sub-expressions (see below)                |
-| `timeline` | object | `{ "start": number, "end": number }` in seconds  |
+| `timeline` | object | `{ "start": number, "end": number }` — fractions of total duration, both in [0, 1] |
+
+**Timeline** values are normalised fractions of `meta.duration`, not absolute seconds. This keeps specs portable across different durations and makes relative timing relationships obvious at a glance.
+
+| Value | Meaning |
+| ----- | ------- |
+| `0`   | Animation start |
+| `1`   | Animation end   |
+| `0.5` | Halfway point   |
+
+Examples for a 4-second animation:
+- `{ "start": 0, "end": 1 }` → visible the whole time (0–4s)
+- `{ "start": 0, "end": 0.5 }` → first half only (0–2s)
+- `{ "start": 0.25, "end": 0.75 }` → middle half (1–3s)
 
 **Style fields:**
 
@@ -117,7 +130,7 @@ A path where every point is computed from equations. The spatial parameter `s` s
     "A": { "args": ["t"], "body": "amplitude * exp(-decay * t)" },
     "E": { "args": ["s", "t"], "body": "clamp(omega * t - abs(k * s), 0, 1)" }
   },
-  "timeline": { "start": 0.0, "end": 3.0 }
+  "timeline": { "start": 0.0, "end": 1.0 }
 }
 ```
 
@@ -146,7 +159,7 @@ A static or animated straight line defined by two endpoints.
     "x2": "500",
     "y2": "0"
   },
-  "timeline": { "start": 0.0, "end": 3.0 }
+  "timeline": { "start": 0.0, "end": 1.0 }
 }
 ```
 
@@ -267,14 +280,14 @@ The canonical validation spec. Live file: [`renderer/specs/dampened-wave.json`](
           "A": { "args": ["t"],      "body": "amplitude * exp(-decay * t)" },
           "E": { "args": ["s", "t"], "body": "clamp(omega * t - abs(k * s), 0, 1)" }
         },
-        "timeline": { "start": 0.0, "end": 3.0 }
+        "timeline": { "start": 0.0, "end": 1.0 }
       },
       {
         "id": "baseline",
         "type": "line",
         "style": { "stroke": "#ffffff22", "stroke_width": 1 },
         "equations": { "x1": "-500", "y1": "0", "x2": "500", "y2": "0" },
-        "timeline": { "start": 0.0, "end": 3.0 }
+        "timeline": { "start": 0.0, "end": 1.0 }
       }
     ]
   }

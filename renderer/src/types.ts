@@ -36,9 +36,18 @@ export interface Scene {
 
 // ─── Shared fields ────────────────────────────────────────────────────────────
 
+/**
+ * When an object is visible, expressed as fractions of the total duration.
+ * Both values are in [0, 1]: 0 = animation start, 1 = animation end.
+ *
+ * Examples (3s animation):
+ *   { start: 0,    end: 1   }  → visible the whole time
+ *   { start: 0,    end: 0.5 }  → visible for the first 1.5s
+ *   { start: 0.33, end: 0.67}  → visible from 1s to 2s
+ */
 export interface Timeline {
-  start: number;
-  end: number;
+  start: number; // 0–1
+  end: number;   // 0–1
 }
 
 export interface Style {

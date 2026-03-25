@@ -39,10 +39,21 @@ export function toCanvas(
 // ─── Timeline check ───────────────────────────────────────────────────────────
 
 /**
- * Return true if t falls within [timeline.start, timeline.end] (inclusive).
+ * Return true if the normalised position tNorm (0–1) falls within the
+ * object's timeline window (also 0–1).
+ *
+ * EPS absorbs IEEE-754 drift so that the last frame of a full-duration
+ * object (e.g. tNorm = 0.999999999... instead of 1.0) is never dropped.
+ * It is intentionally tiny (1e-9) — far smaller than one frame duration
+ * at any realistic fps — so it introduces no perceptible timing error.
  */
-export function isActive(timeline: Timeline, t: number): boolean {
-  return t >= timeline.start && t <= timeline.end;
+const TIMELINE_EPS = 1e-9;
+
+export function isActive(timeline: Timeline, tNorm: number): boolean {
+  return (
+    tNorm >= timeline.start - TIMELINE_EPS &&
+    tNorm <= timeline.end + TIMELINE_EPS
+  );
 }
 
 // ─── Prepared objects ─────────────────────────────────────────────────────────
@@ -204,7 +215,10 @@ function drawLine(
 
 /**
  * Clear the canvas and draw all active objects for the given time t.
- * vars contains the current runtime values of all spec variables.
+ *
+ * t        — absolute time in seconds (passed to evaluators; expressions use real seconds)
+ * tNorm    — t / duration (0–1), used for timeline window checks
+ * vars     — current runtime values of all spec variables
  */
 export function renderFrame(
   ctx: CanvasRenderingContext2D,
@@ -215,12 +229,16 @@ export function renderFrame(
 ): void {
   const { meta, objects } = prepared;
 
+  // Normalise t to [0, 1] for timeline comparisons.
+  // Expressions still receive absolute t in seconds.
+  const tNorm = meta.duration > 0 ? t / meta.duration : 0;
+
   // Clear
   ctx.fillStyle = background;
   ctx.fillRect(0, 0, meta.width, meta.height);
 
   for (const obj of objects) {
-    if (!isActive(obj.source.timeline, t)) continue;
+    if (!isActive(obj.source.timeline, tNorm)) continue;
 
     if (obj.kind === "parametric_path") {
       drawParametricPath(ctx, obj, meta, t, vars);

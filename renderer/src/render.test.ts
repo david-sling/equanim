@@ -125,14 +125,14 @@ const waveSpec: AnimSpec = {
           A: { args: ["t"], body: "amplitude * exp(-decay * t)" },
           E: { args: ["s", "t"], body: "clamp(omega * t - abs(k * s), 0, 1)" },
         },
-        timeline: { start: 0.0, end: 3.0 },
+        timeline: { start: 0.0, end: 1.0 },
       },
       {
         id: "baseline",
         type: "line",
         style: { stroke: "#ffffff22", stroke_width: 1 },
         equations: { x1: "-500", y1: "0", x2: "500", y2: "0" },
-        timeline: { start: 0.0, end: 3.0 },
+        timeline: { start: 0.0, end: 1.0 },
       },
     ],
   },
@@ -190,20 +190,49 @@ console.log("\n--- toCanvas: origin=top-left ---");
 
 // ─── isActive ─────────────────────────────────────────────────────────────────
 
-console.log("\n--- isActive ---");
+console.log("\n--- isActive: basic ---");
 {
-  const tl = { start: 1.0, end: 2.5 };
+  const tl = { start: 0.2, end: 0.8 };
 
-  assert("t exactly at start is active", isActive(tl, 1.0), true);
-  assert("t exactly at end is active", isActive(tl, 2.5), true);
-  assert("t in the middle is active", isActive(tl, 1.75), true);
-  assert("t before start is inactive", isActive(tl, 0.99), false);
-  assert("t after end is inactive", isActive(tl, 2.51), false);
-  assert("t=0 with start=0 is active", isActive({ start: 0, end: 3 }, 0), true);
+  assert("tNorm at start is active",       isActive(tl, 0.2),  true);
+  assert("tNorm at end is active",         isActive(tl, 0.8),  true);
+  assert("tNorm in the middle is active",  isActive(tl, 0.5),  true);
+  assert("tNorm before start is inactive", isActive(tl, 0.19), false);
+  assert("tNorm after end is inactive",    isActive(tl, 0.81), false);
+  assert("tNorm=0 with start=0 is active", isActive({ start: 0, end: 1 }, 0), true);
+  assert("tNorm=1 with end=1 is active",   isActive({ start: 0, end: 1 }, 1), true);
 
-  // Edge: zero-duration object (start == end)
-  assert("zero-duration: exact hit", isActive({ start: 1.5, end: 1.5 }, 1.5), true);
-  assert("zero-duration: miss", isActive({ start: 1.5, end: 1.5 }, 1.4999), false);
+  // Zero-duration objects (flash on a single frame)
+  assert("zero-duration: exact hit",  isActive({ start: 0.5, end: 0.5 }, 0.5),   true);
+  assert("zero-duration: clear miss", isActive({ start: 0.5, end: 0.5 }, 0.499), false);
+}
+
+console.log("\n--- isActive: float safety ---");
+{
+  // Simulate common float drift: t accumulated by dt = 1/fps/duration
+  // 60fps, 3s → tNorm increments by 1/180 ≈ 0.005555...
+  // After 180 increments the value is rarely exactly 1.0
+  const almostOne = 1 - 1e-10;
+  assert("tNorm=1-1e-10 still hits end=1.0 (epsilon saves it)",
+    isActive({ start: 0, end: 1 }, almostOne), true);
+
+  const almostZero = 0 + 1e-10;
+  assert("tNorm=0+1e-10 still hits start=0.0",
+    isActive({ start: 0, end: 1 }, almostZero), true);
+
+  // But a value a full frame away (>> epsilon) should correctly miss
+  const clearlyBefore = 0.5 - 0.001;
+  assert("tNorm clearly before start is inactive",
+    isActive({ start: 0.5, end: 1 }, clearlyBefore), false);
+
+  // Epsilon does not swallow legitimate gaps between adjacent objects
+  // Object A ends at 0.5, object B starts at 0.5 — no overlap desired
+  const midPoint = 0.5;
+  assert("tNorm=0.5 active in [0, 0.5]",     isActive({ start: 0, end: 0.5 }, midPoint), true);
+  assert("tNorm=0.5 active in [0.5, 1]",     isActive({ start: 0.5, end: 1 }, midPoint), true);
+  // A value just past the boundary (more than eps away) should miss
+  const justPast = 0.5 + 1e-6;
+  assert("tNorm=0.5+1e-6 misses [0, 0.5]",   isActive({ start: 0, end: 0.5 }, justPast), false);
 }
 
 // ─── generateSamples ──────────────────────────────────────────────────────────
@@ -291,13 +320,14 @@ console.log("\n--- renderFrame: draw call structure ---");
 console.log("\n--- renderFrame: timeline filtering ---");
 {
   // Build a spec where the wave only runs from t=1 to t=2
+  // Wave active from 1s–2s on a 3s animation → normalised 1/3–2/3
   const timedSpec: AnimSpec = {
     ...waveSpec,
     scene: {
       id: "root",
       objects: [
-        { ...waveSpec.scene.objects[0]!, timeline: { start: 1.0, end: 2.0 } },
-        { ...waveSpec.scene.objects[1]!, timeline: { start: 0.0, end: 3.0 } },
+        { ...waveSpec.scene.objects[0]!, timeline: { start: 1 / 3, end: 2 / 3 } },
+        { ...waveSpec.scene.objects[1]!, timeline: { start: 0.0,   end: 1.0   } },
       ],
     },
   };
