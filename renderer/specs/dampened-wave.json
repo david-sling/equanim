@@ -1,0 +1,64 @@
+{
+  "spec": "animspec/0.1",
+  "meta": {
+    "title": "Dampened Wave Propagation",
+    "duration": 3.0,
+    "width": 1000,
+    "height": 600,
+    "fps": 60,
+    "coordinate_system": "cartesian",
+    "origin": "center"
+  },
+  "scene": {
+    "id": "root",
+    "objects": [
+      {
+        "id": "wave",
+        "type": "parametric_path",
+        "style": {
+          "stroke": "#44aaff",
+          "stroke_width": 2.5,
+          "fill": "none"
+        },
+        "domain": {
+          "s": [-500, 500],
+          "samples": 800
+        },
+        "equations": {
+          "x": "s",
+          "y": "A(t) * E(s, t) * sin(k * s - omega * t)"
+        },
+        "params": {
+          "k": 0.018,
+          "omega": 6.28
+        },
+        "functions": {
+          "A": { "args": ["t"], "body": "80 * exp(-1.8 * t)" },
+          "E": { "args": ["s", "t"], "body": "clamp(omega * t - abs(k * s), 0, 1)" }
+        },
+        "timeline": {
+          "start": 0.0,
+          "end": 3.0
+        }
+      },
+      {
+        "id": "baseline",
+        "type": "line",
+        "style": {
+          "stroke": "#ffffff22",
+          "stroke_width": 1
+        },
+        "equations": {
+          "x1": "-500",
+          "y1": "0",
+          "x2": "500",
+          "y2": "0"
+        },
+        "timeline": {
+          "start": 0.0,
+          "end": 3.0
+        }
+      }
+    ]
+  }
+}
