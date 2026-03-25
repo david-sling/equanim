@@ -3,6 +3,8 @@ import { prepareScene } from "./render.js";
 import { createPlayer, defaultVarValues } from "./player.js";
 import type { Player, PlayerState } from "./player.js";
 
+import dampenedWave from "../specs/dampened-wave.json";
+
 // ─── DOM refs ─────────────────────────────────────────────────────────────────
 
 const canvas = document.getElementById("canvas") as HTMLCanvasElement;
@@ -28,9 +30,7 @@ let currentVars: VarValues = {};
 
 // ─── Bootstrap ────────────────────────────────────────────────────────────────
 
-const defaultSpec = await fetch("./specs/dampened-wave.json").then(
-  (r) => r.json() as Promise<Equanim>,
-);
+const defaultSpec = dampenedWave as Equanim;
 specInput.value = JSON.stringify(defaultSpec, null, 2);
 loadSpec(defaultSpec);
 
