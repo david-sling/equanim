@@ -1,6 +1,6 @@
 # Equanim v0.1
 
-A declarative, JSON-based animation specification. Every visual property is a math expression evaluated at runtime. Two time variables are always available: `T` (global seconds, for physics) and `t` (local 0→1 over the object's own timeline window, for portable animations). Specs are designed to be AI-generatable, renderer-agnostic, and human-readable.
+A declarative, JSON-based animation specification. Every visual property is a math expression evaluated at runtime. Four time/duration variables are always available in every expression: `t` (local 0→1), `d` (local seconds), `root_t` (global 0→1), and `root_d` (total seconds). Specs are designed to be AI-generatable, renderer-agnostic, and human-readable.
 
 ---
 
@@ -108,7 +108,7 @@ Examples for a 4-second animation:
 
 ### `parametric_path`
 
-A path where every point is computed from equations. The spatial parameter `s` sweeps across a domain and `x(s,T,t)` / `y(s,T,t)` define where each point lands at a given time.
+A path where every point is computed from equations. The spatial parameter `s` sweeps across a domain and `x(s,t,...)` / `y(s,t,...)` define where each point lands at a given time.
 
 ```json
 {
@@ -138,7 +138,7 @@ A path where every point is computed from equations. The spatial parameter `s` s
 **Rendering logic:**
 
 1. For each frame at global time `T`, iterate `s` from `domain.s[0]` to `domain.s[1]` in `samples` steps
-2. Evaluate `x(s, T, t)` and `y(s, T, t)` for each step (`t` = local normalised time for this object)
+2. Evaluate `x(s, t, ...)` and `y(s, t, ...)` for each step (all four time/duration variables are in scope)
 3. Draw a polyline through all resulting points
 
 ---
@@ -165,7 +165,7 @@ A static or animated straight line defined by two endpoints.
 }
 ```
 
-Any equation value can be a constant (`"0"`) or a time-varying expression (`"100 * sin(T)"` for physics, `"100 * sin(t * pi)"` for a portable single-cycle sweep).
+Any equation value can be a constant (`"0"`) or a time-varying expression (`"100 * sin(t * pi)"` for a portable single-cycle sweep, `"100 * sin(root_t * 2 * pi)"` to sync to the full animation).
 
 ---
 
@@ -184,19 +184,30 @@ Equations are math expression strings evaluated at runtime using [mathjs](https:
 
 ### Variables in scope
 
-Two time variables are always available. Use whichever matches your intent:
+Four time/duration variables are always available. They come in two pairs — local (relative to the object's own window) and global (relative to the full animation):
 
-| Name | Description                                                      | When to use                                                                                                                                             |
-| ---- | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `T`  | Global absolute time in seconds                                  | Physics simulations, decay rates, wave equations — anything where the _rate_ must match real elapsed time (`exp(-1.8 * T)`, `sin(omega * T)`)           |
-| `t`  | Local normalised time, 0→1 over the object's own timeline window | Portable animations where behaviour should fit the object's duration regardless of where it sits in the timeline (`opacity = t`, `x = lerp(x0, x1, t)`) |
+| Name     | Value range | Description                                               |
+| -------- | ----------- | --------------------------------------------------------- |
+| `t`      | 0 → 1       | Local normalised time over the object's own timeline window. `t=0` when the object enters; `t=1` when it exits. Default choice for portable animations. |
+| `d`      | seconds     | Local duration — length of the object's own window in seconds. Multiply to convert: `t * d` = local seconds elapsed since the object started. |
+| `root_t` | 0 → 1       | Global normalised time over the full animation (`T / meta.duration`). Use to sync effects across objects regardless of their individual windows. |
+| `root_d` | seconds     | Total animation duration in seconds (`meta.duration`). Multiply to convert: `root_t * root_d` = global seconds elapsed. |
 
-`t = 0` when the object enters; `t = 1` when it exits. If an object spans the full animation (`start: 0, end: 1`), `T` and `t` are proportional, but for objects with shorter windows they differ.
+**When to use each:**
+
+- `t` — default. Fade, ease, sweep — anything that should complete within the object's own window.
+- `d` — when you need real seconds locally (e.g. a decay rate in units of per-second: `exp(-k * t * d)`).
+- `root_t` — when multiple objects need to stay in sync with the whole animation regardless of their individual windows.
+- `root_d` — when combining with `root_t` to express global durations, or for expressions that scale with total animation length.
+
+**Future group scoping:** When groups are introduced, each group will expose its own `<group_id>_t` and `<group_id>_d` to its children, following the same pattern. Object and group IDs must therefore be valid identifiers: letters, digits, and underscores only; no hyphens; cannot start with a digit.
 
 | Name       | Available in      | Description                                              |
 | ---------- | ----------------- | -------------------------------------------------------- |
-| `T`        | all equations     | Global time in seconds                                   |
 | `t`        | all equations     | Local normalised time 0→1 over this object's window      |
+| `d`        | all equations     | Local duration in seconds                                |
+| `root_t`   | all equations     | Global normalised time 0→1 over the full animation       |
+| `root_d`   | all equations     | Total animation duration in seconds                      |
 | `s`        | `parametric_path` | Spatial parameter swept across `domain.s`                |
 | _(params)_ | all equations     | Keys from the object's `params` block                    |
 | _(vars)_   | all equations     | Keys from the spec's `variables` block (override params) |

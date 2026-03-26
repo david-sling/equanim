@@ -13,6 +13,7 @@ import {
   toCanvas,
   isActive,
   computeLocalT,
+  computeLocalD,
   generateSamples,
   prepareScene,
   renderFrame,
@@ -419,6 +420,47 @@ console.log("\n--- computeLocalT: zero-duration objects ---");
   );
 }
 
+// ─── computeLocalD ────────────────────────────────────────────────────────────
+
+console.log("\n--- computeLocalD: basic ---");
+{
+  const duration = 4.0;
+
+  // Full-span object: (1 - 0) * 4 = 4s
+  assertClose("full span: d = 4s", computeLocalD({ start: 0, end: 1 }, duration), 4);
+
+  // Half-span object: (1 - 0.5) * 4 = 2s
+  assertClose("half span (0.5–1): d = 2s", computeLocalD({ start: 0.5, end: 1 }, duration), 2);
+
+  // Quarter span: (0.75 - 0.25) * 4 = 2s
+  assertClose("quarter span (0.25–0.75): d = 2s", computeLocalD({ start: 0.25, end: 0.75 }, duration), 2);
+
+  // First third: (0.33 - 0) * 3 ≈ 0.99s
+  assertClose("first third on 3s animation", computeLocalD({ start: 0, end: 1/3 }, 3), 1, 0.01);
+
+  // Zero-duration object: d = 0
+  assertClose("zero-duration: d = 0", computeLocalD({ start: 0.5, end: 0.5 }, duration), 0);
+
+  // d is independent of T (it's a constant per object)
+  const tl = { start: 0.25, end: 0.75 };
+  assertClose("d is same at T=0 and T=2 (it's constant)", computeLocalD(tl, duration), 2);
+}
+
+console.log("\n--- computeLocalD: t * d = seconds elapsed ---");
+{
+  // For an object spanning seconds 1–3 on a 4s animation (start=0.25, end=0.75, d=2):
+  //   at T=1 (t=0): t*d = 0*2 = 0s elapsed since object started ✓
+  //   at T=2 (t=0.5): t*d = 0.5*2 = 1s elapsed ✓
+  //   at T=3 (t=1): t*d = 1*2 = 2s elapsed ✓
+  const tl = { start: 0.25, end: 0.75 };
+  const dur = 4.0;
+  const d = computeLocalD(tl, dur);
+
+  assertClose("T=1 → t=0, t*d=0s", computeLocalT(1, tl, dur) * d, 0);
+  assertClose("T=2 → t=0.5, t*d=1s", computeLocalT(2, tl, dur) * d, 1);
+  assertClose("T=3 → t=1, t*d=2s", computeLocalT(3, tl, dur) * d, 2);
+}
+
 // ─── generateSamples ──────────────────────────────────────────────────────────
 
 console.log("\n--- generateSamples: sample count and domain coverage ---");
@@ -567,6 +609,103 @@ console.log("\n--- generateSamples: local t computation ---");
     600,
     0.5,
   );
+}
+
+// ─── generateSamples: root_t and d injected correctly ─────────────────────────
+
+console.log("\n--- generateSamples: root_t injection ---");
+{
+  // root_t = T / meta.duration (global 0→1 regardless of object's window).
+  // Build a spec where x = root_t * 1000 (sweeps full canvas width as the
+  // animation progresses). The object has a narrow window (middle half only)
+  // but root_t should still reflect global progress, not local.
+  const rootTSpec: Equanim = {
+    spec: "equanim/0.1",
+    meta: { ...centerMeta, duration: 4.0 },
+    scene: {
+      id: "root",
+      objects: [
+        {
+          id: "globaltrace",
+          type: "parametric_path",
+          style: { stroke: "#fff", stroke_width: 1, fill: "none" },
+          domain: { s: [0, 1], samples: 2 },
+          // x = root_t * 1000 → canvas_x = 500 + root_t*1000 - 500 = root_t*1000
+          equations: { x: "root_t * 1000 - 500", y: "0" },
+          // Object spans seconds 1–3 on a 4s animation (start=0.25, end=0.75)
+          timeline: { start: 0.25, end: 0.75 },
+        },
+      ],
+    },
+  };
+  const rtMeta  = rootTSpec.meta;
+  const rtPrep  = prepareScene(rootTSpec);
+  const rtPath  = rtPrep.objects[0] as PreparedParametricPath;
+
+  // At T=1 (root_t=0.25): x = 0.25*1000 - 500 = -250 → canvas_x = 500 + (-250) = 250
+  const atT1 = generateSamples(rtPath, rtMeta, 1.0);
+  assertClose("root_t=0.25 (T=1/4): canvas_x = 250", atT1[0]![0], 250, 0.5);
+
+  // At T=2 (root_t=0.5): x = 0.5*1000 - 500 = 0 → canvas_x = 500
+  const atT2 = generateSamples(rtPath, rtMeta, 2.0);
+  assertClose("root_t=0.5 (T=2/4): canvas_x = 500", atT2[0]![0], 500, 0.5);
+
+  // At T=3 (root_t=0.75): x = 0.75*1000 - 500 = 250 → canvas_x = 750
+  const atT3 = generateSamples(rtPath, rtMeta, 3.0);
+  assertClose("root_t=0.75 (T=3/4): canvas_x = 750", atT3[0]![0], 750, 0.5);
+}
+
+console.log("\n--- generateSamples: d injection ---");
+{
+  // d = (timeline.end - timeline.start) * duration.
+  // x = d * 10 exposes it as position; y = 0.
+  // Object spans seconds 1–3 on a 4s animation → d = 2.
+  // x = d * 10 = 20 → spec_x=20 → canvas_x = 500 + 20 = 520
+  const dSpec: Equanim = {
+    spec: "equanim/0.1",
+    meta: { ...centerMeta, duration: 4.0 },
+    scene: {
+      id: "root",
+      objects: [
+        {
+          id: "dtrace",
+          type: "parametric_path",
+          style: { stroke: "#fff", stroke_width: 1, fill: "none" },
+          domain: { s: [0, 1], samples: 2 },
+          equations: { x: "d * 10", y: "0" },
+          timeline: { start: 0.25, end: 0.75 }, // d = 2s
+        },
+      ],
+    },
+  };
+  const dMeta = dSpec.meta;
+  const dPrep = prepareScene(dSpec);
+  const dPath = dPrep.objects[0] as PreparedParametricPath;
+
+  // d=2 is constant regardless of T, so x=20 → canvas_x=520 at any active T
+  const atEntry = generateSamples(dPath, dMeta, 1.5);
+  assertClose("d=2 at T=1.5: canvas_x = 520 (d*10=20 → spec_x=20)", atEntry[0]![0], 520, 0.5);
+
+  const atMid = generateSamples(dPath, dMeta, 2.0);
+  assertClose("d=2 at T=2: canvas_x still 520 (d is constant)", atMid[0]![0], 520, 0.5);
+
+  // root_d: x = root_d * 5 on a 4s animation → x = 20 → canvas_x = 520
+  const rootDSpec: Equanim = {
+    ...dSpec,
+    scene: {
+      id: "root",
+      objects: [{
+        ...dSpec.scene.objects[0]!,
+        id: "rdtrace",
+        equations: { x: "root_d * 5", y: "0" }, // root_d=4 → x=20 → canvas_x=520
+        timeline: { start: 0.25, end: 0.75 },
+      }],
+    },
+  };
+  const rdPrep = prepareScene(rootDSpec);
+  const rdPath = rdPrep.objects[0] as PreparedParametricPath;
+  const atRd = generateSamples(rdPath, dMeta, 2.0);
+  assertClose("root_d=4 → root_d*5=20 → canvas_x=520", atRd[0]![0], 520, 0.5);
 }
 
 // ─── renderFrame: mock canvas call verification ───────────────────────────────

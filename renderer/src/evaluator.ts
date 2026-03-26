@@ -6,15 +6,33 @@ import type { Params, Functions, VarValues } from "./types.js";
 /**
  * A compiled expression ready for repeated evaluation.
  *
- * Both time values are available to every expression:
- *   T — global time in seconds (wall-clock physics time, e.g. exp(-decay * T))
- *   t — local normalised time 0→1 over the object's own timeline window
- *         (e.g. opacity = t  always fades in over the object's duration)
+ * Four time/duration variables are always available in every expression:
+ *
+ *   t      — local normalised time 0→1 over the object's own timeline window
+ *               (e.g. `opacity = t` always fades in over the object's duration)
+ *   d      — local duration in seconds (length of the object's own window)
+ *               Multiply to get local seconds: `t * d`
+ *   root_t — global normalised time 0→1 over the full animation
+ *               (e.g. sync a pulse to the whole animation: `sin(root_t * 2 * pi)`)
+ *   root_d — total animation duration in seconds
+ *               Multiply to get global seconds: `root_t * root_d`
  *
  * s is the parametric domain variable (only meaningful for parametric_path).
+ *
+ * Naming rule: object and group IDs must be valid identifiers (letters,
+ * digits, underscores; no hyphens; cannot start with a digit) so they can
+ * serve as namespace prefixes — e.g. a future group "intro" would expose
+ * intro_t and intro_d to its children.
  */
 export interface CompiledExpr {
-  evaluate(T: number, t: number, s?: number, vars?: VarValues): number;
+  evaluate(
+    t: number,
+    root_t: number,
+    d: number,
+    root_d: number,
+    s?: number,
+    vars?: VarValues,
+  ): number;
 }
 
 /**
@@ -32,7 +50,15 @@ export interface Evaluator {
   /**
    * One-shot evaluate — useful for constants / debugging.
    */
-  evaluate(expr: string, T: number, t: number, s?: number, vars?: VarValues): number;
+  evaluate(
+    expr: string,
+    t: number,
+    root_t: number,
+    d: number,
+    root_d: number,
+    s?: number,
+    vars?: VarValues,
+  ): number;
 }
 
 // ─── Built-in extensions ──────────────────────────────────────────────────────
@@ -54,10 +80,13 @@ const clamp = (x: number, lo: number, hi: number): number =>
  * @param functions - The object's `functions` block (named sub-expressions)
  *
  * Scope layout at evaluation time:
- *   { T, t, s?, clamp, ...params, ...vars, A: (...args) => ..., E: (...args) => ... }
+ *   { t, d, root_t, root_d, s?, clamp, ...params, ...vars, A: (...args) => ... }
  *
- * T = global absolute time in seconds
- * t = local normalised time (0→1 over the object's own active window)
+ * t      = local normalised time (0→1 over the object's own active window)
+ * d      = local duration in seconds
+ * root_t = global normalised time (0→1 over the full animation)
+ * root_d = total animation duration in seconds
+ *
  * vars (global variable values) are spread after params, so a variable with
  * the same name as a param will override it.
  *
@@ -78,17 +107,21 @@ export function buildEvaluator(
     })
   );
 
-  // Build a scope object for a given (T, t, s?, vars?) quad.
-  // Fresh scope per call so T/t/s/vars don't bleed between samples.
+  // Build a scope object for a given (t, root_t, d, root_d, s?, vars?) set.
+  // Fresh scope per call so values don't bleed between samples.
   function makeScope(
-    T: number,
     t: number,
+    root_t: number,
+    d: number,
+    root_d: number,
     s?: number,
     vars: VarValues = {}
   ): Record<string, unknown> {
     const scope: Record<string, unknown> = {
-      T,
       t,
+      d,
+      root_t,
+      root_d,
       clamp,
       ...params, // object-level constants
       ...vars,   // global runtime variables (override same-named params)
@@ -97,7 +130,7 @@ export function buildEvaluator(
     if (s !== undefined) scope["s"] = s;
 
     // Register each named function as a JS callable in the scope.
-    // When mathjs encounters A(T) it calls scope.A(T).
+    // When mathjs encounters A(t) it calls scope.A(t).
     // The function closes over the outer scope for params/vars,
     // then overrides the named argument slots.
     for (const { name, args, compiled } of compiledFunctions) {
@@ -117,14 +150,29 @@ export function buildEvaluator(
     compile(expr: string): CompiledExpr {
       const compiled = math.compile(expr);
       return {
-        evaluate(T: number, t: number, s?: number, vars?: VarValues): number {
-          return compiled.evaluate(makeScope(T, t, s, vars)) as number;
+        evaluate(
+          t: number,
+          root_t: number,
+          d: number,
+          root_d: number,
+          s?: number,
+          vars?: VarValues,
+        ): number {
+          return compiled.evaluate(makeScope(t, root_t, d, root_d, s, vars)) as number;
         },
       };
     },
 
-    evaluate(expr: string, T: number, t: number, s?: number, vars?: VarValues): number {
-      return math.evaluate(expr, makeScope(T, t, s, vars)) as number;
+    evaluate(
+      expr: string,
+      t: number,
+      root_t: number,
+      d: number,
+      root_d: number,
+      s?: number,
+      vars?: VarValues,
+    ): number {
+      return math.evaluate(expr, makeScope(t, root_t, d, root_d, s, vars)) as number;
     },
   };
 }

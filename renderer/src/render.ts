@@ -56,7 +56,7 @@ export function isActive(timeline: Timeline, tNorm: number): boolean {
   );
 }
 
-// ─── Local time ──────────────────────────────────────────────────────────────
+// ─── Local time & duration ────────────────────────────────────────────────────
 
 /**
  * Compute the local normalised time t (0→1) for an object at global time T.
@@ -76,6 +76,18 @@ export function computeLocalT(
   const tEnd = timeline.end * duration;
   if (tEnd <= tStart) return 0;
   return Math.max(0, Math.min(1, (T - tStart) / (tEnd - tStart)));
+}
+
+/**
+ * Compute the local duration d in seconds for an object's timeline window.
+ *
+ * d = (timeline.end - timeline.start) * meta.duration
+ *
+ * This is a constant per object (independent of the current frame time T).
+ * Multiply by t to convert local normalised time to local seconds: `t * d`.
+ */
+export function computeLocalD(timeline: Timeline, duration: number): number {
+  return (timeline.end - timeline.start) * duration;
 }
 
 // ─── Prepared objects ─────────────────────────────────────────────────────────
@@ -149,8 +161,11 @@ export function prepareScene(spec: Equanim): PreparedScene {
  * Generate canvas-space points for a parametric path at global time T.
  * Returns an array of [canvasX, canvasY] tuples.
  *
- * Both T (global seconds) and t (local 0→1 over the object's window) are
- * injected into the evaluator scope so expressions can use either.
+ * Injects four time/duration variables into each expression's scope:
+ *   t      — local 0→1 over this object's timeline window
+ *   d      — local duration in seconds (length of this object's window)
+ *   root_t — global 0→1 over the full animation
+ *   root_d — total animation duration in seconds
  *
  * Exposed separately so tests can verify point values without
  * needing a real canvas context.
@@ -162,7 +177,11 @@ export function generateSamples(
   vars: VarValues = {},
 ): Array<[number, number]> {
   const { source, compiledX, compiledY } = prepared;
-  const t = computeLocalT(T, source.timeline, meta.duration);
+  const t      = computeLocalT(T, source.timeline, meta.duration);
+  const d      = computeLocalD(source.timeline, meta.duration);
+  const root_t = meta.duration > 0 ? T / meta.duration : 0;
+  const root_d = meta.duration;
+
   const [sMin, sMax] = source.domain.s;
   const n = source.domain.samples;
   const step = (sMax - sMin) / (n - 1);
@@ -170,8 +189,8 @@ export function generateSamples(
 
   for (let i = 0; i < n; i++) {
     const s = sMin + i * step;
-    const sx = compiledX.evaluate(T, t, s, vars);
-    const sy = compiledY.evaluate(T, t, s, vars);
+    const sx = compiledX.evaluate(t, root_t, d, root_d, s, vars);
+    const sy = compiledY.evaluate(t, root_t, d, root_d, s, vars);
     points.push(toCanvas(sx, sy, meta));
   }
 
@@ -222,12 +241,15 @@ function drawLine(
   T: number,
   vars: VarValues,
 ): void {
-  const t = computeLocalT(T, prepared.source.timeline, meta.duration);
+  const t      = computeLocalT(T, prepared.source.timeline, meta.duration);
+  const d      = computeLocalD(prepared.source.timeline, meta.duration);
+  const root_t = meta.duration > 0 ? T / meta.duration : 0;
+  const root_d = meta.duration;
 
-  const sx1 = prepared.compiledX1.evaluate(T, t, undefined, vars);
-  const sy1 = prepared.compiledY1.evaluate(T, t, undefined, vars);
-  const sx2 = prepared.compiledX2.evaluate(T, t, undefined, vars);
-  const sy2 = prepared.compiledY2.evaluate(T, t, undefined, vars);
+  const sx1 = prepared.compiledX1.evaluate(t, root_t, d, root_d, undefined, vars);
+  const sy1 = prepared.compiledY1.evaluate(t, root_t, d, root_d, undefined, vars);
+  const sx2 = prepared.compiledX2.evaluate(t, root_t, d, root_d, undefined, vars);
+  const sy2 = prepared.compiledY2.evaluate(t, root_t, d, root_d, undefined, vars);
 
   const [cx1, cy1] = toCanvas(sx1, sy1, meta);
   const [cx2, cy2] = toCanvas(sx2, sy2, meta);
@@ -244,11 +266,16 @@ function drawLine(
 /**
  * Clear the canvas and draw all active objects for the given global time T.
  *
- * T        — absolute time in seconds; injected as `T` in every expression scope
+ * T        — absolute time in seconds (0 → meta.duration)
  * tNorm    — T / duration (0–1), used for timeline window checks only
- * t        — per-object local normalised time (0→1 over each object's window),
- *             computed inside draw helpers and injected as `t` in their scopes
- * vars     — current runtime values of all spec variables
+ *
+ * Per object, four variables are injected into expression scope:
+ *   t      — local 0→1 over the object's own timeline window
+ *   d      — local duration in seconds
+ *   root_t — global 0→1 over the full animation (= tNorm)
+ *   root_d — total animation duration in seconds
+ *
+ * vars — current runtime values of all spec variables
  */
 export function renderFrame(
   ctx: CanvasRenderingContext2D,
