@@ -29,6 +29,7 @@ const openFileBtn = document.getElementById(
 const variablesPanel = document.getElementById(
   "variables-panel",
 ) as HTMLDivElement;
+const exportBtn = document.getElementById("btn-export") as HTMLButtonElement;
 
 // ─── Built-in specs ───────────────────────────────────────────────────────────
 
@@ -42,6 +43,8 @@ const BUILT_IN_SPECS: Record<string, Equanim> = {
 
 let currentPlayer: Player;
 let currentVars: VarValues = {};
+let currentSpecTitle = "equanim";
+let currentFps = 60;
 
 // ─── Bootstrap ────────────────────────────────────────────────────────────────
 
@@ -136,6 +139,9 @@ function loadSpec(input: Equanim | string): void {
     currentVars = defaultVarValues(spec.variables ?? {});
     const prepared = prepareScene(spec, currentVars);
 
+    currentSpecTitle = spec.meta.title ?? "equanim";
+    currentFps = spec.meta.fps ?? 60;
+
     canvas.width = spec.meta.width;
     canvas.height = spec.meta.height;
     seekBar.max = String(spec.meta.duration);
@@ -166,8 +172,13 @@ function showError(msg: string): void {
 function updateUI(state: PlayerState): void {
   stateDisplay.textContent = state;
   stateDisplay.className = `state-badge state-${state}`;
-  playBtn.disabled = state === "playing";
-  pauseBtn.disabled = state !== "playing";
+  const rec = isRecording();
+  playBtn.disabled  = state === "playing" || rec;
+  pauseBtn.disabled = state !== "playing"  || rec;
+  resetBtn.disabled = rec;
+  seekBar.disabled  = rec;
+  // Stop recording when the animation naturally reaches the end
+  if (state === "ended" && rec) finishRecording();
 }
 
 function updateTime(t: number): void {
@@ -215,7 +226,80 @@ fileInput.addEventListener("change", () => {
   reader.readAsText(file);
 });
 
-// Drag-and-drop JSON files onto the canvas
+// ─── Export (canvas → WebM via MediaRecorder) ────────────────────────────────
+
+let recorder: MediaRecorder | null = null;
+let recordedChunks: Blob[] = [];
+let recordingTimer: ReturnType<typeof setInterval> | null = null;
+let recordingStart = 0;
+
+function isRecording(): boolean {
+  return recorder !== null && recorder.state !== "inactive";
+}
+
+function finishRecording(): void {
+  if (!recorder || recorder.state === "inactive") return;
+  recorder.stop(); // triggers recorder.onstop asynchronously
+}
+
+exportBtn.addEventListener("click", () => {
+  // If already recording, cancel it
+  if (isRecording()) {
+    finishRecording();
+    return;
+  }
+
+  // Pick best supported codec
+  const mimeType =
+    ["video/webm;codecs=vp9", "video/webm;codecs=vp8", "video/webm"]
+      .find(t => MediaRecorder.isTypeSupported(t)) ?? "video/webm";
+
+  recordedChunks = [];
+  const stream = canvas.captureStream(currentFps);
+  recorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: 8_000_000 });
+
+  recorder.ondataavailable = (e) => {
+    if (e.data.size > 0) recordedChunks.push(e.data);
+  };
+
+  recorder.onstop = () => {
+    // Download the recorded blob
+    const blob = new Blob(recordedChunks, { type: mimeType });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${currentSpecTitle.toLowerCase().replace(/\s+/g, "-")}.webm`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+
+    // Reset recording state
+    recorder = null;
+    recordedChunks = [];
+    if (recordingTimer !== null) { clearInterval(recordingTimer); recordingTimer = null; }
+    exportBtn.textContent = "⬛ Export";
+    exportBtn.classList.remove("recording");
+    updateUI(currentPlayer.getState());
+  };
+
+  // Collect data in 200ms chunks so we don't lose frames if tab is backgrounded
+  recorder.start(200);
+
+  // Reset and play the animation from the beginning
+  currentPlayer.reset();
+  currentPlayer.play();
+
+  // Update button to show live elapsed time; click again to cancel
+  exportBtn.classList.add("recording");
+  recordingStart = Date.now();
+  recordingTimer = setInterval(() => {
+    const s = ((Date.now() - recordingStart) / 1000).toFixed(1);
+    exportBtn.textContent = `● ${s}s  ✕`;
+  }, 200);
+});
+
+// ─── Drag-and-drop JSON files onto the canvas ────────────────────────────────
 canvas.addEventListener("dragover", (e) => e.preventDefault());
 canvas.addEventListener("drop", (e) => {
   e.preventDefault();
