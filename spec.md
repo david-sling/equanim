@@ -169,9 +169,39 @@ Any equation value can be a constant (`"0"`) or a time-varying expression (`"100
 
 ---
 
+### `circle`
+
+A filled or stroked circle defined by its centre and radius as equations.
+
+```json
+{
+  "id": "ball",
+  "type": "circle",
+  "style": {
+    "fill": "#ff6644",
+    "stroke": "#ff9977",
+    "stroke_width": 2
+  },
+  "equations": {
+    "cx": "0",
+    "cy": "-190 + radius + B(t * d)",
+    "r": "radius"
+  },
+  "functions": {
+    "p": { "args": ["ts"], "body": "(ts / sqrt(2 * h0 / g)) % 1" },
+    "H": { "args": ["ts"], "body": "h0 * exp(-decay * ts)" },
+    "B": { "args": ["ts"], "body": "H(ts) * 4 * p(ts) * (1 - p(ts))" }
+  },
+  "timeline": { "start": 0.0, "end": 1.0 }
+}
+```
+
+`cx` and `cy` are in spec space and go through the standard coordinate transform. `r` is a scalar magnitude in spec units — it is not y-flipped. Negative values are treated as their absolute value.
+
+---
+
 ### Planned primitives
 
-- `circle` — `cx`, `cy`, `r` as equations
 - `rect` — `x`, `y`, `width`, `height` as equations
 - `text` — position, content, font, size
 - `group` — container for transforming multiple objects together

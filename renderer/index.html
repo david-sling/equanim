@@ -181,6 +181,33 @@
         padding-top: 10px;
       }
 
+      .spec-toolbar {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+
+      .spec-toolbar label {
+        color: #666;
+        font-size: 12px;
+      }
+
+      select {
+        background: #1e1e28;
+        color: #ccc;
+        border: 1px solid #3a3a4a;
+        border-radius: 3px;
+        padding: 5px 8px;
+        cursor: pointer;
+        font-family: inherit;
+        font-size: 12px;
+      }
+
+      select:focus {
+        outline: 1px solid #44aaff55;
+      }
+
       textarea {
         width: 100%;
         height: 260px;
@@ -233,6 +260,16 @@
     <details>
       <summary>▸ Load spec JSON</summary>
       <div class="spec-editor">
+        <div class="spec-toolbar">
+          <label for="spec-select">Examples</label>
+          <select id="spec-select">
+            <option value="dampened-wave">Dampened Wave</option>
+            <option value="bouncing-ball">Bouncing Ball</option>
+          </select>
+          <span style="color:#333">|</span>
+          <button id="btn-open-file">Open file…</button>
+          <input id="file-input" type="file" accept=".json" style="display:none" />
+        </div>
         <textarea
           id="spec-input"
           placeholder="Paste Equanim JSON here…"

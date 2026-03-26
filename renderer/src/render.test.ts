@@ -19,7 +19,7 @@ import {
   renderFrame,
 } from "./render.js";
 import type { Equanim, Meta, ParametricPath } from "./types.js";
-import type { PreparedScene, PreparedParametricPath } from "./render.js";
+import type { PreparedScene, PreparedParametricPath, PreparedCircle } from "./render.js";
 
 // ─── Test harness ─────────────────────────────────────────────────────────────
 
@@ -119,6 +119,9 @@ function makeMockCtx() {
     },
     fill() {
       calls.push({ method: "fill", args: [] });
+    },
+    arc(...args: unknown[]) {
+      calls.push({ method: "arc", args });
     },
 
     _calls: calls,
@@ -945,6 +948,172 @@ console.log("\n--- generateSamples: variable effects ---");
     deviation > 1,
     true,
   );
+}
+
+// ─── circle: prepareScene ─────────────────────────────────────────────────────
+
+console.log("\n--- circle: prepareScene ---");
+{
+  const circleSpec: Equanim = {
+    spec: "equanim/0.1",
+    meta: centerMeta,
+    scene: {
+      id: "root",
+      objects: [{
+        id: "ball",
+        type: "circle",
+        style: { fill: "#ff6644", stroke: "#ff9977", stroke_width: 2 },
+        equations: { cx: "100", cy: "50", r: "30" },
+        timeline: { start: 0, end: 1 },
+      }],
+    },
+  };
+
+  const prepared = prepareScene(circleSpec);
+  assert("prepared has 1 object", prepared.objects.length, 1);
+  assert("kind is circle", prepared.objects[0]!.kind, "circle");
+
+  const cp = prepared.objects[0] as PreparedCircle;
+  assert("compiledCx exists", typeof cp.compiledCx.evaluate, "function");
+  assert("compiledCy exists", typeof cp.compiledCy.evaluate, "function");
+  assert("compiledR exists",  typeof cp.compiledR.evaluate,  "function");
+}
+
+// ─── circle: coordinate transform ─────────────────────────────────────────────
+
+console.log("\n--- circle: coordinate transform ---");
+{
+  // Circle at spec (100, 50), canvas 1000×600, origin=center:
+  //   canvasCx = 500 + 100 = 600
+  //   canvasCy = 300 - 50  = 250   (y-flip)
+  //   r = 30 (unchanged — it's a magnitude, not a coordinate)
+  const circleSpec: Equanim = {
+    spec: "equanim/0.1",
+    meta: centerMeta,
+    scene: {
+      id: "root",
+      objects: [{
+        id: "ball",
+        type: "circle",
+        style: { fill: "#ff6644", stroke: "none", stroke_width: 0 },
+        equations: { cx: "100", cy: "50", r: "30" },
+        timeline: { start: 0, end: 1 },
+      }],
+    },
+  };
+
+  const prepared = prepareScene(circleSpec);
+  const ctx = makeMockCtx();
+
+  renderFrame(ctx as unknown as CanvasRenderingContext2D, prepared, 1.0, "#000");
+
+  const arcCall = ctx._calls.find(c => c.method === "arc");
+  assert("arc was called", arcCall !== undefined, true);
+  assertClose("arc cx (canvas x)",  arcCall!.args[0] as number, 600);
+  assertClose("arc cy (canvas y, y-flipped)", arcCall!.args[1] as number, 250);
+  assertClose("arc r (unchanged)",  arcCall!.args[2] as number, 30);
+}
+
+// ─── circle: fill and stroke ───────────────────────────────────────────────────
+
+console.log("\n--- circle: fill and stroke ---");
+{
+  // fill !== "none" → both fill() and stroke() should be called
+  const filledSpec: Equanim = {
+    spec: "equanim/0.1",
+    meta: centerMeta,
+    scene: {
+      id: "root",
+      objects: [{
+        id: "ball",
+        type: "circle",
+        style: { fill: "#ff6644", stroke: "#fff", stroke_width: 2 },
+        equations: { cx: "0", cy: "0", r: "20" },
+        timeline: { start: 0, end: 1 },
+      }],
+    },
+  };
+  const prepared = prepareScene(filledSpec);
+  const ctx = makeMockCtx();
+  renderFrame(ctx as unknown as CanvasRenderingContext2D, prepared, 0.5, "#000");
+  assert("filled circle calls fill()",   ctx._countMethod("fill"),   1);
+  assert("filled circle calls stroke()", ctx._countMethod("stroke"), 1);
+
+  // fill = "none" → only stroke
+  ctx._clearCalls();
+  const strokeOnlySpec: Equanim = {
+    ...filledSpec,
+    scene: {
+      id: "root",
+      objects: [{
+        ...(filledSpec.scene.objects[0]! as typeof filledSpec.scene.objects[0] & { type: "circle" }),
+        style: { fill: "none", stroke: "#fff", stroke_width: 1 },
+      }],
+    },
+  };
+  const preparedSO = prepareScene(strokeOnlySpec);
+  renderFrame(ctx as unknown as CanvasRenderingContext2D, preparedSO, 0.5, "#000");
+  assert("stroke-only circle: fill() not called", ctx._countMethod("fill"),   0);
+  assert("stroke-only circle: stroke() called",   ctx._countMethod("stroke"), 1);
+}
+
+// ─── circle: timeline filtering ───────────────────────────────────────────────
+
+console.log("\n--- circle: timeline filtering ---");
+{
+  // Circle active only from T=1 to T=2 on a 3s animation
+  const timedCircle: Equanim = {
+    spec: "equanim/0.1",
+    meta: centerMeta, // duration=3
+    scene: {
+      id: "root",
+      objects: [{
+        id: "ball",
+        type: "circle",
+        style: { fill: "#ff6644", stroke: "none", stroke_width: 0 },
+        equations: { cx: "0", cy: "0", r: "20" },
+        timeline: { start: 1/3, end: 2/3 }, // T=1 to T=2
+      }],
+    },
+  };
+  const prepared = prepareScene(timedCircle);
+  const ctx = makeMockCtx();
+
+  renderFrame(ctx as unknown as CanvasRenderingContext2D, prepared, 0.5, "#000");
+  assert("circle inactive at T=0.5: no arc", ctx._countMethod("arc"), 0);
+
+  ctx._clearCalls();
+  renderFrame(ctx as unknown as CanvasRenderingContext2D, prepared, 1.5, "#000");
+  assert("circle active at T=1.5: arc called", ctx._countMethod("arc"), 1);
+
+  ctx._clearCalls();
+  renderFrame(ctx as unknown as CanvasRenderingContext2D, prepared, 2.5, "#000");
+  assert("circle inactive at T=2.5: no arc", ctx._countMethod("arc"), 0);
+}
+
+// ─── circle: r uses abs (negative radius is safe) ─────────────────────────────
+
+console.log("\n--- circle: r is abs'd ---");
+{
+  const negRSpec: Equanim = {
+    spec: "equanim/0.1",
+    meta: centerMeta,
+    scene: {
+      id: "root",
+      objects: [{
+        id: "ball",
+        type: "circle",
+        style: { fill: "#ff0", stroke: "none", stroke_width: 0 },
+        equations: { cx: "0", cy: "0", r: "-25" },
+        timeline: { start: 0, end: 1 },
+      }],
+    },
+  };
+  const prepared = prepareScene(negRSpec);
+  const ctx = makeMockCtx();
+  renderFrame(ctx as unknown as CanvasRenderingContext2D, prepared, 0.5, "#000");
+  const arcCall = ctx._calls.find(c => c.method === "arc");
+  assertClose("negative r expression → abs(r) = 25", arcCall!.args[2] as number, 25);
 }
 
 // ─── Summary ──────────────────────────────────────────────────────────────────

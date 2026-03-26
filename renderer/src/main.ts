@@ -4,6 +4,7 @@ import { createPlayer, defaultVarValues } from "./player.js";
 import type { Player, PlayerState } from "./player.js";
 
 import dampenedWave from "../specs/dampened-wave.json";
+import bouncingBall from "../specs/bouncing-ball.json";
 
 // ─── DOM refs ─────────────────────────────────────────────────────────────────
 
@@ -19,9 +20,19 @@ const stateDisplay = document.getElementById(
 const specInput = document.getElementById("spec-input") as HTMLTextAreaElement;
 const loadBtn = document.getElementById("btn-load") as HTMLButtonElement;
 const errorDisplay = document.getElementById("error-display") as HTMLDivElement;
+const specSelect = document.getElementById("spec-select") as HTMLSelectElement;
+const fileInput = document.getElementById("file-input") as HTMLInputElement;
+const openFileBtn = document.getElementById("btn-open-file") as HTMLButtonElement;
 const variablesPanel = document.getElementById(
   "variables-panel",
 ) as HTMLDivElement;
+
+// ─── Built-in specs ───────────────────────────────────────────────────────────
+
+const BUILT_IN_SPECS: Record<string, Equanim> = {
+  "dampened-wave": dampenedWave as Equanim,
+  "bouncing-ball": bouncingBall as Equanim,
+};
 
 // ─── State ────────────────────────────────────────────────────────────────────
 
@@ -30,7 +41,7 @@ let currentVars: VarValues = {};
 
 // ─── Bootstrap ────────────────────────────────────────────────────────────────
 
-const defaultSpec = dampenedWave as Equanim;
+const defaultSpec = BUILT_IN_SPECS["dampened-wave"]!;
 specInput.value = JSON.stringify(defaultSpec, null, 2);
 loadSpec(defaultSpec);
 
@@ -171,6 +182,30 @@ seekBar.addEventListener("input", () => {
 
 loadBtn.addEventListener("click", () => {
   loadSpec(specInput.value.trim());
+});
+
+// Built-in spec selector
+specSelect.addEventListener("change", () => {
+  const spec = BUILT_IN_SPECS[specSelect.value];
+  if (!spec) return;
+  specInput.value = JSON.stringify(spec, null, 2);
+  loadSpec(spec);
+});
+
+// File picker
+openFileBtn.addEventListener("click", () => fileInput.click());
+fileInput.addEventListener("change", () => {
+  const file = fileInput.files?.[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    const text = reader.result as string;
+    specInput.value = text;
+    loadSpec(text);
+    // Reset the input so the same file can be re-selected if needed
+    fileInput.value = "";
+  };
+  reader.readAsText(file);
 });
 
 // Drag-and-drop JSON files onto the canvas

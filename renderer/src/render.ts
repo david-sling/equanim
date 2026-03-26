@@ -4,6 +4,7 @@ import type {
   SceneObject,
   ParametricPath,
   Line,
+  Circle,
   Timeline,
   VarValues,
 } from "./types.js";
@@ -113,7 +114,15 @@ export interface PreparedLine {
   compiledY2: CompiledExpr;
 }
 
-export type PreparedObject = PreparedParametricPath | PreparedLine;
+export interface PreparedCircle {
+  kind: "circle";
+  source: Circle;
+  compiledCx: CompiledExpr;
+  compiledCy: CompiledExpr;
+  compiledR: CompiledExpr;
+}
+
+export type PreparedObject = PreparedParametricPath | PreparedLine | PreparedCircle;
 
 export interface PreparedScene {
   meta: Meta;
@@ -142,6 +151,16 @@ function prepareObject(obj: SceneObject): PreparedObject {
       compiledY1: ev.compile(obj.equations.y1),
       compiledX2: ev.compile(obj.equations.x2),
       compiledY2: ev.compile(obj.equations.y2),
+    };
+  }
+
+  if (obj.type === "circle") {
+    return {
+      kind: "circle",
+      source: obj,
+      compiledCx: ev.compile(obj.equations.cx),
+      compiledCy: ev.compile(obj.equations.cy),
+      compiledR:  ev.compile(obj.equations.r),
     };
   }
 
@@ -261,6 +280,34 @@ function drawLine(
   ctx.stroke();
 }
 
+function drawCircle(
+  ctx: CanvasRenderingContext2D,
+  prepared: PreparedCircle,
+  meta: Meta,
+  T: number,
+  vars: VarValues,
+): void {
+  const t      = computeLocalT(T, prepared.source.timeline, meta.duration);
+  const d      = computeLocalD(prepared.source.timeline, meta.duration);
+  const root_t = meta.duration > 0 ? T / meta.duration : 0;
+  const root_d = meta.duration;
+
+  const cx = prepared.compiledCx.evaluate(t, root_t, d, root_d, undefined, vars);
+  const cy = prepared.compiledCy.evaluate(t, root_t, d, root_d, undefined, vars);
+  const r  = Math.abs(prepared.compiledR.evaluate(t, root_t, d, root_d, undefined, vars));
+
+  const [canvasCx, canvasCy] = toCanvas(cx, cy, meta);
+
+  applyStyle(ctx, prepared.source.style);
+  ctx.beginPath();
+  ctx.arc(canvasCx, canvasCy, r, 0, 2 * Math.PI);
+
+  if (prepared.source.style.fill && prepared.source.style.fill !== "none") {
+    ctx.fill();
+  }
+  ctx.stroke();
+}
+
 // ─── Frame render (called once per animation frame) ──────────────────────────
 
 /**
@@ -300,6 +347,8 @@ export function renderFrame(
       drawParametricPath(ctx, obj, meta, T, vars);
     } else if (obj.kind === "line") {
       drawLine(ctx, obj, meta, T, vars);
+    } else if (obj.kind === "circle") {
+      drawCircle(ctx, obj, meta, T, vars);
     }
   }
 }

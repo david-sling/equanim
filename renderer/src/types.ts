@@ -140,6 +140,20 @@ export interface Line {
   timeline: Timeline;
 }
 
+export interface Circle {
+  id: string;
+  type: "circle";
+  style: Style;
+  equations: {
+    cx: string; // center x in spec space
+    cy: string; // center y in spec space
+    r: string;  // radius in spec units
+  };
+  params?: Params;
+  functions?: Functions;
+  timeline: Timeline;
+}
+
 // ─── Union ────────────────────────────────────────────────────────────────────
 
-export type SceneObject = ParametricPath | Line;
+export type SceneObject = ParametricPath | Line | Circle;
