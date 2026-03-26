@@ -167,6 +167,46 @@ There's a list of open design questions at the bottom of `spec.md`. If you have 
 
 ---
 
+## Roadmap
+
+**Phase 1 — Harden the spec (in progress)**
+
+The goal of this phase is to find where the format is weak before locking anything down. More example specs are the primary tool: each one should try to express something the existing examples don't, and surface gaps or awkwardness in doing so. Good candidates: Lissajous figure, orbiting system, bar chart animating in, easing demo.
+
+- [x] Reference renderer — TypeScript + Vite + mathjs, canvas-based
+- [x] `parametric_path` primitive
+- [x] `line` primitive
+- [x] `circle` primitive
+- [x] Time variable system — `t`, `d`, `root_t`, `root_d`
+- [x] Example specs — dampened wave, bouncing ball
+- [ ] More example specs — stress-test the format across different animation types
+- [ ] `rect` primitive — `x`, `y`, `width`, `height` as equations
+- [ ] Spec validator — structured errors on malformed specs, reserved identifier check
+- [ ] AI generation test — give `spec.md` to an LLM cold and see what it gets wrong
+
+This phase ends when an LLM can generate a valid, interesting spec from `spec.md` alone without hand-holding.
+
+**Phase 2 — Composition**
+
+- [ ] `group` primitive — container with its own timeline, exposing `<group_id>_t` and `<group_id>_d` to children
+- [ ] `equanim-utils` package — expression builder helpers (piecewise, lerp, easing functions) that output valid mathjs strings; separate from the renderer
+
+**Phase 3 — Export and distribution**
+
+- [ ] Headless renderer — Node.js + canvas, frame-accurate offline rendering
+- [ ] Lottie exporter — compile Equanim specs to Lottie JSON for iOS, Android, and web playback
+- [ ] SVG path primitive — accept a static SVG `d` string as the curve shape, with equations controlling position, scale, and rotation; bridges the "designed in a tool" and "expressed mathematically" worlds
+
+**Phase 4 — Ecosystem**
+
+- [ ] Community spec library — curated, searchable collection of open spec files (animations, templates, experiments)
+- [ ] Individual registry hosting — anyone can publish and share specs at a stable URL, importable by renderers and tools directly
+- [ ] `equanim-utils` package (may move earlier depending on community demand) — expression builder helpers for piecewise, lerp, and easing
+
+- [ ] `text` primitive — position, content, font size as equations; deferred because font metrics and layout are complex and don't stress-test the core expression system, but needed for completeness
+
+---
+
 ## Status
 
 `equanim/0.1` — early, unstable, evolving. The spec will change. Contributions that help stress-test the format are more valuable right now than contributions that polish the renderer.
