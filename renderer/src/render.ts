@@ -2,6 +2,7 @@ import type {
   Equanim,
   Meta,
   SceneObject,
+  OdeSystem,
   ParametricPath,
   Line,
   Circle,
@@ -9,6 +10,7 @@ import type {
   VarValues,
 } from "./types.js";
 import { buildEvaluator, type CompiledExpr } from "./evaluator.js";
+import { createOdeRef, integrateInto, makeInterpolator, type OdeRef } from "./ode-solver.js";
 
 // ─── Coordinate transform ─────────────────────────────────────────────────────
 
@@ -127,12 +129,24 @@ export type PreparedObject = PreparedParametricPath | PreparedLine | PreparedCir
 export interface PreparedScene {
   meta: Meta;
   objects: PreparedObject[];
+  /**
+   * Present when the spec contains one or more ode_system nodes.
+   * Call this whenever variable values change to re-run RK4 integration
+   * with the new values. The trajectory data is updated in place inside
+   * the OdeRef objects, so interpolator functions (already captured in
+   * evaluator closures) automatically reflect the new trajectories on
+   * the next renderFrame call — no evaluator rebuild needed.
+   */
+  reintegrate?: (vars: VarValues) => void;
 }
 
 // ─── Scene preparation (run once) ────────────────────────────────────────────
 
-function prepareObject(obj: SceneObject): PreparedObject {
-  const ev = buildEvaluator(obj.params ?? {}, obj.functions ?? {});
+function prepareObject(
+  obj: SceneObject,
+  injectedFns: Record<string, (...args: number[]) => number> = {},
+): PreparedObject {
+  const ev = buildEvaluator(obj.params ?? {}, obj.functions ?? {}, injectedFns);
 
   if (obj.type === "parametric_path") {
     return {
@@ -167,11 +181,59 @@ function prepareObject(obj: SceneObject): PreparedObject {
   throw new Error(`Unknown object type: ${(obj as SceneObject).type}`);
 }
 
-export function prepareScene(spec: Equanim): PreparedScene {
-  return {
-    meta: spec.meta,
-    objects: spec.scene.objects.map(prepareObject),
-  };
+/**
+ * Prepare a spec for rendering.
+ *
+ * Two-pass process:
+ *
+ * 1. ODE systems — any `ode_system` node is integrated numerically (RK4)
+ *    with the provided variable values. Each state variable is exposed as a
+ *    named interpolation function `<id>_<stateVar>` (e.g. `phys_th1`) in the
+ *    injectedFns map, which is then passed to every renderable object's
+ *    evaluator. The interpolators close over mutable OdeRef objects, so
+ *    calling `prepared.reintegrate(newVars)` updates the trajectory data in
+ *    place and all evaluators pick up the new values on the next frame.
+ *
+ * 2. Renderable objects — compiled with the injectedFns in their scope.
+ *
+ * @param spec  - The parsed Equanim spec
+ * @param vars  - Current variable values (used for ODE integration).
+ *               For specs without ODE systems this has no effect.
+ */
+export function prepareScene(spec: Equanim, vars: VarValues = {}): PreparedScene {
+  // ── Pass 1: integrate ODE systems ─────────────────────────────────────────
+  const injectedFns: Record<string, (...args: number[]) => number> = {};
+  const odeSystems: Array<{ system: OdeSystem; ref: OdeRef }> = [];
+
+  for (const node of spec.scene.objects) {
+    if (node.type !== "ode_system") continue;
+
+    const ref = createOdeRef(node, spec.meta.duration, vars);
+    odeSystems.push({ system: node, ref });
+
+    for (const stateVar of Object.keys(node.state)) {
+      injectedFns[`${node.id}_${stateVar}`] = makeInterpolator(ref, stateVar);
+    }
+  }
+
+  // ── Pass 2: compile renderable objects ────────────────────────────────────
+  const objects: PreparedObject[] = [];
+  for (const node of spec.scene.objects) {
+    if (node.type === "ode_system") continue;
+    objects.push(prepareObject(node as SceneObject, injectedFns));
+  }
+
+  // ── reintegrate callback ───────────────────────────────────────────────────
+  const reintegrate =
+    odeSystems.length > 0
+      ? (newVars: VarValues): void => {
+          for (const { system, ref } of odeSystems) {
+            integrateInto(system, spec.meta.duration, newVars, ref);
+          }
+        }
+      : undefined;
+
+  return { meta: spec.meta, objects, reintegrate };
 }
 
 // ─── Per-object sample generation (pure, testable) ───────────────────────────

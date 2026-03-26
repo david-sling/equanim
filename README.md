@@ -82,9 +82,10 @@ cd renderer
 npx tsx src/evaluator.test.ts
 npx tsx src/render.test.ts
 npx tsx src/player.test.ts
+npx tsx src/ode-solver.test.ts
 ```
 
-237 assertions, all passing. Tests are plain TypeScript — no test framework dependency. If you add a feature, add tests.
+272 assertions, all passing. Tests are plain TypeScript — no test framework dependency. If you add a feature, add tests.
 
 ---
 

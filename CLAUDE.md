@@ -39,9 +39,10 @@ Each core module has a companion test file. Run individually with `npx tsx`:
 npx tsx src/evaluator.test.ts
 npx tsx src/render.test.ts
 npx tsx src/player.test.ts
+npx tsx src/ode-solver.test.ts
 ```
 
-179 assertions total, all passing.
+272 assertions total, all passing.
 
 ### Coordinate system
 

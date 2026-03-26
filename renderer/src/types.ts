@@ -31,7 +31,7 @@ export interface Meta {
 
 export interface Scene {
   id: string;
-  objects: SceneObject[];
+  objects: SceneNode[];
 }
 
 // ─── Shared fields ────────────────────────────────────────────────────────────
@@ -154,6 +154,41 @@ export interface Circle {
   timeline: Timeline;
 }
 
-// ─── Union ────────────────────────────────────────────────────────────────────
+/**
+ * A non-renderable physics simulation node.
+ *
+ * The renderer integrates the system numerically (RK4) before playback,
+ * producing a trajectory for each state variable. These are exposed as
+ * callable interpolation functions in every other object's expression scope
+ * using the naming convention `<id>_<stateVar>(t_seconds)`.
+ *
+ * Example: an OdeSystem with id "phys" and state var "th1" exposes
+ * `phys_th1(t)` to all sibling objects.
+ *
+ * Derivative expressions are evaluated in a scope containing:
+ *   - all current state variable values (e.g. th1, w1, th2, w2)
+ *   - the object's own `params`
+ *   - the spec's global `variables` (runtime values)
+ */
+export interface OdeSystem {
+  id: string;
+  type: "ode_system";
+  /** Initial conditions: state variable name → initial value. */
+  state: Record<string, number>;
+  /** Derivative expressions: variable name → expression for d(var)/dt. */
+  derivatives: Record<string, string>;
+  /** Named constants available in derivative expressions. */
+  params?: Params;
+  /** Numerical solver. Default: "rk4". */
+  solver?: "rk4";
+  /** Integration step size in seconds. Smaller = more accurate. Default: 0.001. */
+  step?: number;
+}
 
+// ─── Unions ───────────────────────────────────────────────────────────────────
+
+/** A visual primitive — the things that actually get drawn. */
 export type SceneObject = ParametricPath | Line | Circle;
+
+/** Any node that can appear in scene.objects, including non-renderable systems. */
+export type SceneNode = SceneObject | OdeSystem;

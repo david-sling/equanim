@@ -76,11 +76,18 @@ const clamp = (x: number, lo: number, hi: number): number =>
 /**
  * Build an Evaluator for a single scene object.
  *
- * @param params    - The object's `params` block (named number constants)
- * @param functions - The object's `functions` block (named sub-expressions)
+ * @param params       - The object's `params` block (named number constants)
+ * @param functions    - The object's `functions` block (named sub-expressions)
+ * @param injectedFns  - Extra callable functions injected into scope at
+ *                       expression-evaluation time. Used to expose ODE
+ *                       trajectory interpolators (e.g. phys_th1, phys_th2)
+ *                       produced by ode_system nodes. The functions close over
+ *                       mutable OdeRef objects, so they automatically reflect
+ *                       re-integrated trajectories without rebuilding evaluators.
  *
  * Scope layout at evaluation time:
- *   { t, d, root_t, root_d, s?, clamp, ...params, ...vars, A: (...args) => ... }
+ *   { t, d, root_t, root_d, s?, clamp, ...params, ...vars,
+ *     ...injectedFns, A: (...args) => ... }
  *
  * t      = local normalised time (0→1 over the object's own active window)
  * d      = local duration in seconds
@@ -88,7 +95,8 @@ const clamp = (x: number, lo: number, hi: number): number =>
  * root_d = total animation duration in seconds
  *
  * vars (global variable values) are spread after params, so a variable with
- * the same name as a param will override it.
+ * the same name as a param will override it. injectedFns are spread after
+ * vars, so ODE interpolators can't be accidentally overridden by sliders.
  *
  * Function bodies are compiled once (math.compile) and re-evaluated
  * with a fresh local scope on every call. This avoids re-parsing on every
@@ -96,7 +104,8 @@ const clamp = (x: number, lo: number, hi: number): number =>
  */
 export function buildEvaluator(
   params: Params = {},
-  functions: Functions = {}
+  functions: Functions = {},
+  injectedFns: Record<string, (...args: number[]) => number> = {},
 ): Evaluator {
   // Pre-compile every function body exactly once.
   const compiledFunctions = Object.entries(functions).map(
@@ -123,8 +132,9 @@ export function buildEvaluator(
       root_t,
       root_d,
       clamp,
-      ...params, // object-level constants
-      ...vars,   // global runtime variables (override same-named params)
+      ...params,      // object-level constants
+      ...vars,        // global runtime variables (override same-named params)
+      ...injectedFns, // ODE interpolators and other externally-provided fns
     };
 
     if (s !== undefined) scope["s"] = s;

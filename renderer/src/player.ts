@@ -160,8 +160,12 @@ export function createPlayer(
 
     setVariables(newVars: VarValues) {
       vars = { ...newVars };
-      // Re-render the current frame so changes are immediately visible,
-      // even during pause or idle.
+      // Re-integrate ODE systems with the new variable values so physics
+      // (e.g. gravity, mass, arm lengths) responds to slider changes.
+      // integrateInto updates trajectory data in the OdeRef objects in place;
+      // interpolator functions already in evaluator closures pick up the new
+      // data automatically on the next renderFrame call.
+      prepared.reintegrate?.(vars);
       draw();
     },
 

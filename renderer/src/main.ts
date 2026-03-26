@@ -127,14 +127,17 @@ function loadSpec(input: Equanim | string): void {
 
   try {
     currentPlayer?.dispose();
-    const prepared = prepareScene(spec);
+
+    // Initialize variable values from defaults BEFORE prepareScene so that
+    // ODE systems (which integrate during prepareScene) receive the correct
+    // initial values for physics variables like g, m1, m2, L1, L2.
+    currentVars = defaultVarValues(spec.variables ?? {});
+    const prepared = prepareScene(spec, currentVars);
 
     canvas.width = spec.meta.width;
     canvas.height = spec.meta.height;
     seekBar.max = String(spec.meta.duration);
 
-    // Initialize variable values from spec defaults
-    currentVars = defaultVarValues(spec.variables ?? {});
     buildVariableSliders(spec.variables ?? {});
 
     currentPlayer = createPlayer(
