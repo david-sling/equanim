@@ -23,7 +23,9 @@ const loadBtn = document.getElementById("btn-load") as HTMLButtonElement;
 const errorDisplay = document.getElementById("error-display") as HTMLDivElement;
 const specSelect = document.getElementById("spec-select") as HTMLSelectElement;
 const fileInput = document.getElementById("file-input") as HTMLInputElement;
-const openFileBtn = document.getElementById("btn-open-file") as HTMLButtonElement;
+const openFileBtn = document.getElementById(
+  "btn-open-file",
+) as HTMLButtonElement;
 const variablesPanel = document.getElementById(
   "variables-panel",
 ) as HTMLDivElement;
@@ -43,7 +45,7 @@ let currentVars: VarValues = {};
 
 // ─── Bootstrap ────────────────────────────────────────────────────────────────
 
-const defaultSpec = BUILT_IN_SPECS["dampened-wave"]!;
+const defaultSpec = BUILT_IN_SPECS["double-pendulum"]!;
 specInput.value = JSON.stringify(defaultSpec, null, 2);
 loadSpec(defaultSpec);
 
