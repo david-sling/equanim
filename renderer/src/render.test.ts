@@ -18,8 +18,18 @@ import {
   prepareScene,
   renderFrame,
 } from "./render.js";
-import type { Equanim, Meta, ParametricPath } from "./types.js";
-import type { PreparedScene, PreparedParametricPath, PreparedCircle } from "./render.js";
+import type {
+  Equanim,
+  Meta,
+  ParametricPath,
+  SceneNode,
+  Timeline,
+} from "./types.js";
+import type {
+  PreparedScene,
+  PreparedParametricPath,
+  PreparedCircle,
+} from "./render.js";
 
 // ─── Test harness ─────────────────────────────────────────────────────────────
 
@@ -430,23 +440,48 @@ console.log("\n--- computeLocalD: basic ---");
   const duration = 4.0;
 
   // Full-span object: (1 - 0) * 4 = 4s
-  assertClose("full span: d = 4s", computeLocalD({ start: 0, end: 1 }, duration), 4);
+  assertClose(
+    "full span: d = 4s",
+    computeLocalD({ start: 0, end: 1 }, duration),
+    4,
+  );
 
   // Half-span object: (1 - 0.5) * 4 = 2s
-  assertClose("half span (0.5–1): d = 2s", computeLocalD({ start: 0.5, end: 1 }, duration), 2);
+  assertClose(
+    "half span (0.5–1): d = 2s",
+    computeLocalD({ start: 0.5, end: 1 }, duration),
+    2,
+  );
 
   // Quarter span: (0.75 - 0.25) * 4 = 2s
-  assertClose("quarter span (0.25–0.75): d = 2s", computeLocalD({ start: 0.25, end: 0.75 }, duration), 2);
+  assertClose(
+    "quarter span (0.25–0.75): d = 2s",
+    computeLocalD({ start: 0.25, end: 0.75 }, duration),
+    2,
+  );
 
   // First third: (0.33 - 0) * 3 ≈ 0.99s
-  assertClose("first third on 3s animation", computeLocalD({ start: 0, end: 1/3 }, 3), 1, 0.01);
+  assertClose(
+    "first third on 3s animation",
+    computeLocalD({ start: 0, end: 1 / 3 }, 3),
+    1,
+    0.01,
+  );
 
   // Zero-duration object: d = 0
-  assertClose("zero-duration: d = 0", computeLocalD({ start: 0.5, end: 0.5 }, duration), 0);
+  assertClose(
+    "zero-duration: d = 0",
+    computeLocalD({ start: 0.5, end: 0.5 }, duration),
+    0,
+  );
 
   // d is independent of T (it's a constant per object)
   const tl = { start: 0.25, end: 0.75 };
-  assertClose("d is same at T=0 and T=2 (it's constant)", computeLocalD(tl, duration), 2);
+  assertClose(
+    "d is same at T=0 and T=2 (it's constant)",
+    computeLocalD(tl, duration),
+    2,
+  );
 }
 
 console.log("\n--- computeLocalD: t * d = seconds elapsed ---");
@@ -641,9 +676,9 @@ console.log("\n--- generateSamples: root_t injection ---");
       ],
     },
   };
-  const rtMeta  = rootTSpec.meta;
-  const rtPrep  = prepareScene(rootTSpec);
-  const rtPath  = rtPrep.objects[0] as PreparedParametricPath;
+  const rtMeta = rootTSpec.meta;
+  const rtPrep = prepareScene(rootTSpec);
+  const rtPath = rtPrep.objects[0] as PreparedParametricPath;
 
   // At T=1 (root_t=0.25): x = 0.25*1000 - 500 = -250 → canvas_x = 500 + (-250) = 250
   const atT1 = generateSamples(rtPath, rtMeta, 1.0);
@@ -687,22 +722,34 @@ console.log("\n--- generateSamples: d injection ---");
 
   // d=2 is constant regardless of T, so x=20 → canvas_x=520 at any active T
   const atEntry = generateSamples(dPath, dMeta, 1.5);
-  assertClose("d=2 at T=1.5: canvas_x = 520 (d*10=20 → spec_x=20)", atEntry[0]![0], 520, 0.5);
+  assertClose(
+    "d=2 at T=1.5: canvas_x = 520 (d*10=20 → spec_x=20)",
+    atEntry[0]![0],
+    520,
+    0.5,
+  );
 
   const atMid = generateSamples(dPath, dMeta, 2.0);
-  assertClose("d=2 at T=2: canvas_x still 520 (d is constant)", atMid[0]![0], 520, 0.5);
+  assertClose(
+    "d=2 at T=2: canvas_x still 520 (d is constant)",
+    atMid[0]![0],
+    520,
+    0.5,
+  );
 
   // root_d: x = root_d * 5 on a 4s animation → x = 20 → canvas_x = 520
   const rootDSpec: Equanim = {
     ...dSpec,
     scene: {
       id: "root",
-      objects: [{
-        ...(dSpec.scene.objects[0]! as ParametricPath),
-        id: "rdtrace",
-        equations: { x: "root_d * 5", y: "0" }, // root_d=4 → x=20 → canvas_x=520
-        timeline: { start: 0.25, end: 0.75 },
-      }],
+      objects: [
+        {
+          ...(dSpec.scene.objects[0]! as ParametricPath),
+          id: "rdtrace",
+          equations: { x: "root_d * 5", y: "0" }, // root_d=4 → x=20 → canvas_x=520
+          timeline: { start: 0.25, end: 0.75 },
+        },
+      ],
     },
   };
   const rdPrep = prepareScene(rootDSpec);
@@ -767,8 +814,11 @@ console.log("\n--- renderFrame: timeline filtering ---");
         {
           ...waveSpec.scene.objects[0]!,
           timeline: { start: 1 / 3, end: 2 / 3 },
-        },
-        { ...waveSpec.scene.objects[1]!, timeline: { start: 0.0, end: 1.0 } },
+        } as SceneNode,
+        {
+          ...waveSpec.scene.objects[1]!,
+          timeline: { start: 0.0, end: 1.0 },
+        } as SceneNode,
       ],
     },
   };
@@ -959,13 +1009,15 @@ console.log("\n--- circle: prepareScene ---");
     meta: centerMeta,
     scene: {
       id: "root",
-      objects: [{
-        id: "ball",
-        type: "circle",
-        style: { fill: "#ff6644", stroke: "#ff9977", stroke_width: 2 },
-        equations: { cx: "100", cy: "50", r: "30" },
-        timeline: { start: 0, end: 1 },
-      }],
+      objects: [
+        {
+          id: "ball",
+          type: "circle",
+          style: { fill: "#ff6644", stroke: "#ff9977", stroke_width: 2 },
+          equations: { cx: "100", cy: "50", r: "30" },
+          timeline: { start: 0, end: 1 },
+        },
+      ],
     },
   };
 
@@ -976,7 +1028,7 @@ console.log("\n--- circle: prepareScene ---");
   const cp = prepared.objects[0] as PreparedCircle;
   assert("compiledCx exists", typeof cp.compiledCx.evaluate, "function");
   assert("compiledCy exists", typeof cp.compiledCy.evaluate, "function");
-  assert("compiledR exists",  typeof cp.compiledR.evaluate,  "function");
+  assert("compiledR exists", typeof cp.compiledR.evaluate, "function");
 }
 
 // ─── circle: coordinate transform ─────────────────────────────────────────────
@@ -992,26 +1044,33 @@ console.log("\n--- circle: coordinate transform ---");
     meta: centerMeta,
     scene: {
       id: "root",
-      objects: [{
-        id: "ball",
-        type: "circle",
-        style: { fill: "#ff6644", stroke: "none", stroke_width: 0 },
-        equations: { cx: "100", cy: "50", r: "30" },
-        timeline: { start: 0, end: 1 },
-      }],
+      objects: [
+        {
+          id: "ball",
+          type: "circle",
+          style: { fill: "#ff6644", stroke: "none", stroke_width: 0 },
+          equations: { cx: "100", cy: "50", r: "30" },
+          timeline: { start: 0, end: 1 },
+        },
+      ],
     },
   };
 
   const prepared = prepareScene(circleSpec);
   const ctx = makeMockCtx();
 
-  renderFrame(ctx as unknown as CanvasRenderingContext2D, prepared, 1.0, "#000");
+  renderFrame(
+    ctx as unknown as CanvasRenderingContext2D,
+    prepared,
+    1.0,
+    "#000",
+  );
 
-  const arcCall = ctx._calls.find(c => c.method === "arc");
+  const arcCall = ctx._calls.find((c) => c.method === "arc");
   assert("arc was called", arcCall !== undefined, true);
-  assertClose("arc cx (canvas x)",  arcCall!.args[0] as number, 600);
+  assertClose("arc cx (canvas x)", arcCall!.args[0] as number, 600);
   assertClose("arc cy (canvas y, y-flipped)", arcCall!.args[1] as number, 250);
-  assertClose("arc r (unchanged)",  arcCall!.args[2] as number, 30);
+  assertClose("arc r (unchanged)", arcCall!.args[2] as number, 30);
 }
 
 // ─── circle: fill and stroke ───────────────────────────────────────────────────
@@ -1024,19 +1083,26 @@ console.log("\n--- circle: fill and stroke ---");
     meta: centerMeta,
     scene: {
       id: "root",
-      objects: [{
-        id: "ball",
-        type: "circle",
-        style: { fill: "#ff6644", stroke: "#fff", stroke_width: 2 },
-        equations: { cx: "0", cy: "0", r: "20" },
-        timeline: { start: 0, end: 1 },
-      }],
+      objects: [
+        {
+          id: "ball",
+          type: "circle",
+          style: { fill: "#ff6644", stroke: "#fff", stroke_width: 2 },
+          equations: { cx: "0", cy: "0", r: "20" },
+          timeline: { start: 0, end: 1 },
+        },
+      ],
     },
   };
   const prepared = prepareScene(filledSpec);
   const ctx = makeMockCtx();
-  renderFrame(ctx as unknown as CanvasRenderingContext2D, prepared, 0.5, "#000");
-  assert("filled circle calls fill()",   ctx._countMethod("fill"),   1);
+  renderFrame(
+    ctx as unknown as CanvasRenderingContext2D,
+    prepared,
+    0.5,
+    "#000",
+  );
+  assert("filled circle calls fill()", ctx._countMethod("fill"), 1);
   assert("filled circle calls stroke()", ctx._countMethod("stroke"), 1);
 
   // fill = "none" → only stroke
@@ -1045,16 +1111,26 @@ console.log("\n--- circle: fill and stroke ---");
     ...filledSpec,
     scene: {
       id: "root",
-      objects: [{
-        ...(filledSpec.scene.objects[0]! as typeof filledSpec.scene.objects[0] & { type: "circle" }),
-        style: { fill: "none", stroke: "#fff", stroke_width: 1 },
-      }],
+      objects: [
+        {
+          ...(filledSpec.scene
+            .objects[0]! as (typeof filledSpec.scene.objects)[0] & {
+            type: "circle";
+          }),
+          style: { fill: "none", stroke: "#fff", stroke_width: 1 },
+        },
+      ],
     },
   };
   const preparedSO = prepareScene(strokeOnlySpec);
-  renderFrame(ctx as unknown as CanvasRenderingContext2D, preparedSO, 0.5, "#000");
-  assert("stroke-only circle: fill() not called", ctx._countMethod("fill"),   0);
-  assert("stroke-only circle: stroke() called",   ctx._countMethod("stroke"), 1);
+  renderFrame(
+    ctx as unknown as CanvasRenderingContext2D,
+    preparedSO,
+    0.5,
+    "#000",
+  );
+  assert("stroke-only circle: fill() not called", ctx._countMethod("fill"), 0);
+  assert("stroke-only circle: stroke() called", ctx._countMethod("stroke"), 1);
 }
 
 // ─── circle: timeline filtering ───────────────────────────────────────────────
@@ -1067,27 +1143,44 @@ console.log("\n--- circle: timeline filtering ---");
     meta: centerMeta, // duration=3
     scene: {
       id: "root",
-      objects: [{
-        id: "ball",
-        type: "circle",
-        style: { fill: "#ff6644", stroke: "none", stroke_width: 0 },
-        equations: { cx: "0", cy: "0", r: "20" },
-        timeline: { start: 1/3, end: 2/3 }, // T=1 to T=2
-      }],
+      objects: [
+        {
+          id: "ball",
+          type: "circle",
+          style: { fill: "#ff6644", stroke: "none", stroke_width: 0 },
+          equations: { cx: "0", cy: "0", r: "20" },
+          timeline: { start: 1 / 3, end: 2 / 3 }, // T=1 to T=2
+        },
+      ],
     },
   };
   const prepared = prepareScene(timedCircle);
   const ctx = makeMockCtx();
 
-  renderFrame(ctx as unknown as CanvasRenderingContext2D, prepared, 0.5, "#000");
+  renderFrame(
+    ctx as unknown as CanvasRenderingContext2D,
+    prepared,
+    0.5,
+    "#000",
+  );
   assert("circle inactive at T=0.5: no arc", ctx._countMethod("arc"), 0);
 
   ctx._clearCalls();
-  renderFrame(ctx as unknown as CanvasRenderingContext2D, prepared, 1.5, "#000");
+  renderFrame(
+    ctx as unknown as CanvasRenderingContext2D,
+    prepared,
+    1.5,
+    "#000",
+  );
   assert("circle active at T=1.5: arc called", ctx._countMethod("arc"), 1);
 
   ctx._clearCalls();
-  renderFrame(ctx as unknown as CanvasRenderingContext2D, prepared, 2.5, "#000");
+  renderFrame(
+    ctx as unknown as CanvasRenderingContext2D,
+    prepared,
+    2.5,
+    "#000",
+  );
   assert("circle inactive at T=2.5: no arc", ctx._countMethod("arc"), 0);
 }
 
@@ -1100,20 +1193,31 @@ console.log("\n--- circle: r is abs'd ---");
     meta: centerMeta,
     scene: {
       id: "root",
-      objects: [{
-        id: "ball",
-        type: "circle",
-        style: { fill: "#ff0", stroke: "none", stroke_width: 0 },
-        equations: { cx: "0", cy: "0", r: "-25" },
-        timeline: { start: 0, end: 1 },
-      }],
+      objects: [
+        {
+          id: "ball",
+          type: "circle",
+          style: { fill: "#ff0", stroke: "none", stroke_width: 0 },
+          equations: { cx: "0", cy: "0", r: "-25" },
+          timeline: { start: 0, end: 1 },
+        },
+      ],
     },
   };
   const prepared = prepareScene(negRSpec);
   const ctx = makeMockCtx();
-  renderFrame(ctx as unknown as CanvasRenderingContext2D, prepared, 0.5, "#000");
-  const arcCall = ctx._calls.find(c => c.method === "arc");
-  assertClose("negative r expression → abs(r) = 25", arcCall!.args[2] as number, 25);
+  renderFrame(
+    ctx as unknown as CanvasRenderingContext2D,
+    prepared,
+    0.5,
+    "#000",
+  );
+  const arcCall = ctx._calls.find((c) => c.method === "arc");
+  assertClose(
+    "negative r expression → abs(r) = 25",
+    arcCall!.args[2] as number,
+    25,
+  );
 }
 
 // ─── ode_system: prepareScene filters it out of rendered objects ───────────────
@@ -1153,7 +1257,11 @@ console.log("\n--- ode_system: node is non-renderable ---");
   assert("remaining object is circle", prepared.objects[0]!.kind, "circle");
 
   // reintegrate callback is present
-  assert("reintegrate callback exists", typeof prepared.reintegrate, "function");
+  assert(
+    "reintegrate callback exists",
+    typeof prepared.reintegrate,
+    "function",
+  );
 }
 
 // ─── ode_system: injected interpolator resolves in expressions ────────────────
@@ -1195,20 +1303,45 @@ console.log("\n--- ode_system: injected interpolator in expressions ---");
 
   // T=0: x=cos(0)=1 → cx_spec=100 → canvas_x = 600
   renderFrame(ctx as unknown as CanvasRenderingContext2D, prepared, 0, "#000");
-  const arcAt0 = ctx._calls.find(c => c.method === "arc");
-  assertClose("at T=0: sys_x(0)=1 → cx_canvas=600", arcAt0!.args[0] as number, 600, 1);
+  const arcAt0 = ctx._calls.find((c) => c.method === "arc");
+  assertClose(
+    "at T=0: sys_x(0)=1 → cx_canvas=600",
+    arcAt0!.args[0] as number,
+    600,
+    1,
+  );
 
   // T=π/2: x=cos(π/2)≈0 → cx_spec=0 → canvas_x = 500
   ctx._calls.length = 0;
-  renderFrame(ctx as unknown as CanvasRenderingContext2D, prepared, Math.PI / 2, "#000");
-  const arcAtHalfPi = ctx._calls.find(c => c.method === "arc");
-  assertClose("at T=π/2: sys_x(π/2)≈0 → cx_canvas≈500", arcAtHalfPi!.args[0] as number, 500, 2);
+  renderFrame(
+    ctx as unknown as CanvasRenderingContext2D,
+    prepared,
+    Math.PI / 2,
+    "#000",
+  );
+  const arcAtHalfPi = ctx._calls.find((c) => c.method === "arc");
+  assertClose(
+    "at T=π/2: sys_x(π/2)≈0 → cx_canvas≈500",
+    arcAtHalfPi!.args[0] as number,
+    500,
+    2,
+  );
 
   // T=π: x=cos(π)=-1 → cx_spec=-100 → canvas_x = 400
   ctx._calls.length = 0;
-  renderFrame(ctx as unknown as CanvasRenderingContext2D, prepared, Math.PI, "#000");
-  const arcAtPi = ctx._calls.find(c => c.method === "arc");
-  assertClose("at T=π: sys_x(π)≈-1 → cx_canvas≈400", arcAtPi!.args[0] as number, 400, 2);
+  renderFrame(
+    ctx as unknown as CanvasRenderingContext2D,
+    prepared,
+    Math.PI,
+    "#000",
+  );
+  const arcAtPi = ctx._calls.find((c) => c.method === "arc");
+  assertClose(
+    "at T=π: sys_x(π)≈-1 → cx_canvas≈400",
+    arcAtPi!.args[0] as number,
+    400,
+    2,
+  );
 }
 
 // ─── ode_system: missing vars causes integration failure (regression) ──────────
@@ -1223,7 +1356,9 @@ console.log("\n--- ode_system: injected interpolator in expressions ---");
 // is exercised by every other ode_system test above. This test locks in the
 // failure mode explicitly so it can never silently regress.
 
-console.log("\n--- ode_system: vars={} with variable-dependent derivatives throws ---");
+console.log(
+  "\n--- ode_system: vars={} with variable-dependent derivatives throws ---",
+);
 {
   const odeSpec: Equanim = {
     spec: "equanim/0.1",
@@ -1257,7 +1392,11 @@ console.log("\n--- ode_system: vars={} with variable-dependent derivatives throw
   } catch {
     threw = true;
   }
-  assert("prepareScene without vars throws for variable-dependent ODE", threw, true);
+  assert(
+    "prepareScene without vars throws for variable-dependent ODE",
+    threw,
+    true,
+  );
 }
 
 // ─── Summary ──────────────────────────────────────────────────────────────────
