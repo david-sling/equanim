@@ -1,0 +1,111 @@
+{
+  "spec": "equanim/0.1",
+  "meta": {
+    "title": "Double Pendulum",
+    "duration": 12.0,
+    "width": 600,
+    "height": 600,
+    "fps": 60,
+    "coordinate_system": "cartesian",
+    "origin": "center"
+  },
+  "variables": {
+    "L1":     { "label": "Arm 1 length",       "default": 100,  "min": 30,  "max": 150, "step": 1    },
+    "L2":     { "label": "Arm 2 length",        "default": 80,   "min": 20,  "max": 130, "step": 1    },
+    "A1":     { "label": "Arm 1 amplitude",     "default": 1.5,  "min": 0.1, "max": 3.1, "step": 0.05 },
+    "A2":     { "label": "Arm 2 amplitude",     "default": 2.0,  "min": 0.1, "max": 3.1, "step": 0.05 },
+    "omega1": { "label": "Frequency 1 (rad/s)", "default": 2.0,  "min": 0.5, "max": 6.0, "step": 0.05 },
+    "omega2": { "label": "Frequency 2 (rad/s)", "default": 3.14, "min": 0.5, "max": 8.0, "step": 0.05 }
+  },
+  "scene": {
+    "id": "root",
+    "objects": [
+      {
+        "id": "trace",
+        "type": "parametric_path",
+        "style": { "stroke": "#44aaff55", "stroke_width": 1.5, "fill": "none" },
+        "domain": { "s": [0, 1], "samples": 800 },
+        "params": { "y_off": 110 },
+        "functions": {
+          "th1": { "args": ["tau"], "body": "A1 * sin(omega1 * tau)" },
+          "th2": { "args": ["tau"], "body": "A2 * sin(omega2 * tau + 0.5)" },
+          "x1f": { "args": ["tau"], "body": "L1 * sin(th1(tau))" },
+          "y1f": { "args": ["tau"], "body": "y_off - L1 * cos(th1(tau))" },
+          "x2f": { "args": ["tau"], "body": "x1f(tau) + L2 * sin(th2(tau))" },
+          "y2f": { "args": ["tau"], "body": "y1f(tau) - L2 * cos(th2(tau))" }
+        },
+        "equations": {
+          "x": "x2f(clamp(s, 0, root_t) * root_d)",
+          "y": "y2f(clamp(s, 0, root_t) * root_d)"
+        },
+        "timeline": { "start": 0.0, "end": 1.0 }
+      },
+      {
+        "id": "arm1",
+        "type": "line",
+        "style": { "stroke": "#9999bb", "stroke_width": 2.5 },
+        "params": { "y_off": 110 },
+        "equations": {
+          "x1": "0",
+          "y1": "y_off",
+          "x2": "L1 * sin(A1 * sin(omega1 * t * d))",
+          "y2": "y_off - L1 * cos(A1 * sin(omega1 * t * d))"
+        },
+        "timeline": { "start": 0.0, "end": 1.0 }
+      },
+      {
+        "id": "arm2",
+        "type": "line",
+        "style": { "stroke": "#9999bb", "stroke_width": 2.5 },
+        "params": { "y_off": 110 },
+        "functions": {
+          "th1": { "args": ["tau"], "body": "A1 * sin(omega1 * tau)" },
+          "th2": { "args": ["tau"], "body": "A2 * sin(omega2 * tau + 0.5)" }
+        },
+        "equations": {
+          "x1": "L1 * sin(th1(t * d))",
+          "y1": "y_off - L1 * cos(th1(t * d))",
+          "x2": "L1 * sin(th1(t * d)) + L2 * sin(th2(t * d))",
+          "y2": "y_off - L1 * cos(th1(t * d)) - L2 * cos(th2(t * d))"
+        },
+        "timeline": { "start": 0.0, "end": 1.0 }
+      },
+      {
+        "id": "pivot",
+        "type": "circle",
+        "style": { "fill": "#ddddff", "stroke": "#ffffff55", "stroke_width": 1 },
+        "params": { "y_off": 110 },
+        "equations": { "cx": "0", "cy": "y_off", "r": "5" },
+        "timeline": { "start": 0.0, "end": 1.0 }
+      },
+      {
+        "id": "bob1",
+        "type": "circle",
+        "style": { "fill": "#aaaacc", "stroke": "#ffffff33", "stroke_width": 1 },
+        "params": { "y_off": 110 },
+        "equations": {
+          "cx": "L1 * sin(A1 * sin(omega1 * t * d))",
+          "cy": "y_off - L1 * cos(A1 * sin(omega1 * t * d))",
+          "r": "10"
+        },
+        "timeline": { "start": 0.0, "end": 1.0 }
+      },
+      {
+        "id": "bob2",
+        "type": "circle",
+        "style": { "fill": "#ff7744", "stroke": "#ff994455", "stroke_width": 2 },
+        "params": { "y_off": 110 },
+        "functions": {
+          "th1": { "args": ["tau"], "body": "A1 * sin(omega1 * tau)" },
+          "th2": { "args": ["tau"], "body": "A2 * sin(omega2 * tau + 0.5)" }
+        },
+        "equations": {
+          "cx": "L1 * sin(th1(t * d)) + L2 * sin(th2(t * d))",
+          "cy": "y_off - L1 * cos(th1(t * d)) - L2 * cos(th2(t * d))",
+          "r": "12"
+        },
+        "timeline": { "start": 0.0, "end": 1.0 }
+      }
+    ]
+  }
+}
