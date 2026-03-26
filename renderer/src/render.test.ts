@@ -1116,6 +1116,150 @@ console.log("\n--- circle: r is abs'd ---");
   assertClose("negative r expression → abs(r) = 25", arcCall!.args[2] as number, 25);
 }
 
+// ─── ode_system: prepareScene filters it out of rendered objects ───────────────
+
+console.log("\n--- ode_system: node is non-renderable ---");
+{
+  const odeSpec: Equanim = {
+    spec: "equanim/0.1",
+    meta: centerMeta,
+    variables: { k: { label: "k", default: 1, min: 0.1, max: 10, step: 0.1 } },
+    scene: {
+      id: "root",
+      objects: [
+        {
+          id: "sys",
+          type: "ode_system",
+          state: { x: 1, v: 0 },
+          derivatives: { x: "v", v: "-k * x" },
+          step: 0.001,
+        },
+        {
+          id: "dot",
+          type: "circle",
+          style: { fill: "#ff0", stroke: "none", stroke_width: 0 },
+          equations: { cx: "sys_x(t * d) * 100", cy: "0", r: "8" },
+          timeline: { start: 0, end: 1 },
+        },
+      ],
+    },
+  };
+
+  const vars = { k: 1 };
+  const prepared = prepareScene(odeSpec, vars);
+
+  // ode_system must not appear in rendered objects
+  assert("ode_system not in prepared.objects", prepared.objects.length, 1);
+  assert("remaining object is circle", prepared.objects[0]!.kind, "circle");
+
+  // reintegrate callback is present
+  assert("reintegrate callback exists", typeof prepared.reintegrate, "function");
+}
+
+// ─── ode_system: injected interpolator resolves in expressions ────────────────
+
+console.log("\n--- ode_system: injected interpolator in expressions ---");
+{
+  // SHO: x(0)=1, v(0)=0, dx/dt=v, dv/dt=-k*x
+  // Exact solution with k=1: x(t) = cos(t)
+  // At t=π/2 seconds, x = cos(π/2) = 0 → canvas_x = 0*100 + 500 = 500
+  // At t=0, x = cos(0) = 1 → canvas_x = 1*100 + 500 = 600
+  const odeSpec: Equanim = {
+    spec: "equanim/0.1",
+    meta: { ...centerMeta, duration: 4 },
+    variables: { k: { label: "k", default: 1, min: 0.1, max: 10, step: 0.1 } },
+    scene: {
+      id: "root",
+      objects: [
+        {
+          id: "sys",
+          type: "ode_system",
+          state: { x: 1, v: 0 },
+          derivatives: { x: "v", v: "-k * x" },
+          step: 0.001,
+        },
+        {
+          id: "dot",
+          type: "circle",
+          style: { fill: "#ff0", stroke: "none", stroke_width: 0 },
+          // cx = sys_x(t*d)*100 — oscillates between -100 and +100 in spec space
+          equations: { cx: "sys_x(t * d) * 100", cy: "0", r: "8" },
+          timeline: { start: 0, end: 1 },
+        },
+      ],
+    },
+  };
+
+  const prepared = prepareScene(odeSpec, { k: 1 });
+  const ctx = makeMockCtx();
+
+  // T=0: x=cos(0)=1 → cx_spec=100 → canvas_x = 600
+  renderFrame(ctx as unknown as CanvasRenderingContext2D, prepared, 0, "#000");
+  const arcAt0 = ctx._calls.find(c => c.method === "arc");
+  assertClose("at T=0: sys_x(0)=1 → cx_canvas=600", arcAt0!.args[0] as number, 600, 1);
+
+  // T=π/2: x=cos(π/2)≈0 → cx_spec=0 → canvas_x = 500
+  ctx._calls.length = 0;
+  renderFrame(ctx as unknown as CanvasRenderingContext2D, prepared, Math.PI / 2, "#000");
+  const arcAtHalfPi = ctx._calls.find(c => c.method === "arc");
+  assertClose("at T=π/2: sys_x(π/2)≈0 → cx_canvas≈500", arcAtHalfPi!.args[0] as number, 500, 2);
+
+  // T=π: x=cos(π)=-1 → cx_spec=-100 → canvas_x = 400
+  ctx._calls.length = 0;
+  renderFrame(ctx as unknown as CanvasRenderingContext2D, prepared, Math.PI, "#000");
+  const arcAtPi = ctx._calls.find(c => c.method === "arc");
+  assertClose("at T=π: sys_x(π)≈-1 → cx_canvas≈400", arcAtPi!.args[0] as number, 400, 2);
+}
+
+// ─── ode_system: missing vars causes integration failure (regression) ──────────
+//
+// This is the regression test for the bug where prepareScene() was called
+// before defaultVarValues() in main.ts, passing vars={} to the ODE integrator.
+// With vars={}, references to spec variables (like `k`) are undefined in the
+// derivative scope, causing mathjs to produce null and throw
+// "Signature not found (signature: unaryMinus(null))".
+//
+// The correct fix — initialising vars from defaults before calling prepareScene —
+// is exercised by every other ode_system test above. This test locks in the
+// failure mode explicitly so it can never silently regress.
+
+console.log("\n--- ode_system: vars={} with variable-dependent derivatives throws ---");
+{
+  const odeSpec: Equanim = {
+    spec: "equanim/0.1",
+    meta: { ...centerMeta, duration: 4 },
+    variables: { k: { label: "k", default: 1, min: 0.1, max: 10, step: 0.1 } },
+    scene: {
+      id: "root",
+      objects: [
+        {
+          id: "sys",
+          type: "ode_system",
+          state: { x: 1, v: 0 },
+          // `k` comes from spec variables — will be undefined if vars={}
+          derivatives: { x: "v", v: "-k * x" },
+          step: 0.001,
+        },
+        {
+          id: "dot",
+          type: "circle",
+          style: { fill: "#ff0", stroke: "none", stroke_width: 0 },
+          equations: { cx: "sys_x(t * d) * 100", cy: "0", r: "8" },
+          timeline: { start: 0, end: 1 },
+        },
+      ],
+    },
+  };
+
+  let threw = false;
+  try {
+    prepareScene(odeSpec); // intentionally omitting vars — should throw
+  } catch {
+    threw = true;
+  }
+  assert("prepareScene without vars throws for variable-dependent ODE", threw, true);
+}
+
 // ─── Summary ──────────────────────────────────────────────────────────────────
 
 console.log(`\n${"─".repeat(40)}`);

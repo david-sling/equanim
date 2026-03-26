@@ -42,7 +42,7 @@ npx tsx src/player.test.ts
 npx tsx src/ode-solver.test.ts
 ```
 
-272 assertions total, all passing.
+279 assertions total, all passing.
 
 ### Coordinate system
 

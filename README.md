@@ -85,7 +85,7 @@ npx tsx src/player.test.ts
 npx tsx src/ode-solver.test.ts
 ```
 
-272 assertions, all passing. Tests are plain TypeScript — no test framework dependency. If you add a feature, add tests.
+279 assertions, all passing. Tests are plain TypeScript — no test framework dependency. If you add a feature, add tests.
 
 ---
 
