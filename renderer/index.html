@@ -158,27 +158,15 @@
       }
 
       /* ── Spec editor ── */
-      details {
+      .spec-panel {
         width: 100%;
         max-width: 1000px;
-      }
-
-      summary {
-        cursor: pointer;
-        color: #888;
-        user-select: none;
-        padding: 4px 0;
-      }
-
-      summary:hover {
-        color: #aaa;
       }
 
       .spec-editor {
         display: flex;
         flex-direction: column;
         gap: 8px;
-        padding-top: 10px;
       }
 
       .spec-toolbar {
@@ -282,15 +270,14 @@
     <!-- Variables panel — populated by main.ts when spec has variables -->
     <div id="variables-panel"></div>
 
-    <details>
-      <summary>▸ Load spec JSON</summary>
+    <div class="spec-panel">
       <div class="spec-editor">
         <div class="spec-toolbar">
           <label for="spec-select">Examples</label>
           <select id="spec-select">
             <option value="dampened-wave">Dampened Wave</option>
             <option value="bouncing-ball">Bouncing Ball</option>
-            <option value="double-pendulum">Double Pendulum</option>
+            <option value="double-pendulum" selected>Double Pendulum</option>
           </select>
           <span style="color:#333">|</span>
           <button id="btn-open-file">Open file…</button>
@@ -303,7 +290,7 @@
         <div id="error-display"></div>
         <button id="btn-load" style="align-self: flex-start">Load spec</button>
       </div>
-    </details>
+    </div>
 
     <script type="module" src="./src/main.ts"></script>
     <script defer src="/_vercel/insights/script.js"></script>
