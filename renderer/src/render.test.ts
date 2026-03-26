@@ -18,7 +18,7 @@ import {
   prepareScene,
   renderFrame,
 } from "./render.js";
-import type { Equanim, Meta } from "./types.js";
+import type { Equanim, Meta, ParametricPath } from "./types.js";
 import type { PreparedScene, PreparedParametricPath } from "./render.js";
 
 // ─── Test harness ─────────────────────────────────────────────────────────────
@@ -695,7 +695,7 @@ console.log("\n--- generateSamples: d injection ---");
     scene: {
       id: "root",
       objects: [{
-        ...dSpec.scene.objects[0]!,
+        ...(dSpec.scene.objects[0]! as ParametricPath),
         id: "rdtrace",
         equations: { x: "root_d * 5", y: "0" }, // root_d=4 → x=20 → canvas_x=520
         timeline: { start: 0.25, end: 0.75 },
