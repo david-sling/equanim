@@ -2,6 +2,8 @@
 
 A declarative, JSON-based animation specification. Every visual property is a math expression evaluated at runtime. Four time/duration variables are always available in every expression: `t` (local 0→1), `d` (local seconds), `root_t` (global 0→1), and `root_d` (total seconds). Specs are designed to be AI-generatable, renderer-agnostic, and human-readable.
 
+<video src="renderer/assets/double-pendulum.mp4" autoplay loop muted playsinline></video>
+
 ---
 
 ## Top-level structure
@@ -296,78 +298,95 @@ For `origin="top-left"`, no transform is applied.
 
 ---
 
-## Hello world: Dampened Wave
+## Hello world: Double Pendulum
 
-The canonical validation spec. Live file: [`renderer/specs/dampened-wave.json`](renderer/specs/dampened-wave.json).
+The canonical example. Real Lagrangian physics in a JSON file — no code, just ODEs and expressions. Live file: [`renderer/specs/double-pendulum.json`](renderer/specs/double-pendulum.json).
+
+The `ode_system` node integrates the equations of motion (RK4, step=0.005s) before playback. Each state variable is exposed as a callable interpolator — `phys_th1(t*d)`, `phys_th2(t*d)` — available in every sibling object's expression scope.
 
 ```json
 {
   "spec": "equanim/0.1",
   "meta": {
-    "title": "Dampened Wave Propagation",
-    "duration": 3.0,
-    "width": 1000,
+    "title": "Double Pendulum",
+    "duration": 30.0,
+    "width": 600,
     "height": 600,
     "fps": 60,
     "coordinate_system": "cartesian",
     "origin": "center"
   },
   "variables": {
-    "amplitude": {
-      "label": "Amplitude",
-      "default": 80,
-      "min": 10,
-      "max": 200,
-      "step": 1
-    },
-    "decay": {
-      "label": "Decay rate",
-      "default": 1.8,
-      "min": 0.1,
-      "max": 6,
-      "step": 0.05
-    },
-    "k": {
-      "label": "Wave number",
-      "default": 0.018,
-      "min": 0.005,
-      "max": 0.08,
-      "step": 0.001
-    },
-    "omega": {
-      "label": "Angular frequency",
-      "default": 6.28,
-      "min": 1,
-      "max": 20,
-      "step": 0.1
-    }
+    "L1":  { "label": "Arm 1 length (m)", "default": 2.5, "min": 0.5, "max": 5.0,  "step": 0.1 },
+    "L2":  { "label": "Arm 2 length (m)", "default": 1.8, "min": 0.3, "max": 4.0,  "step": 0.1 },
+    "m1":  { "label": "Bob 1 mass (kg)",  "default": 2.0, "min": 0.5, "max": 5.0,  "step": 0.1 },
+    "m2":  { "label": "Bob 2 mass (kg)",  "default": 1.0, "min": 0.5, "max": 5.0,  "step": 0.1 },
+    "g":   { "label": "Gravity (m/s²)",   "default": 9.8, "min": 1.0, "max": 30.0, "step": 0.1 },
+    "ppm": { "label": "Pixels per metre", "default": 55,  "min": 20,  "max": 120,  "step": 5   }
   },
   "scene": {
     "id": "root",
     "objects": [
       {
-        "id": "wave",
-        "type": "parametric_path",
-        "style": { "stroke": "#44aaff", "stroke_width": 2.5, "fill": "none" },
-        "domain": { "s": [-500, 500], "samples": 800 },
-        "equations": {
-          "x": "s",
-          "y": "A(t) * E(s, t) * sin(k * s - omega * t)"
+        "id": "phys",
+        "type": "ode_system",
+        "state": { "th1": 2.0, "w1": 0.0, "th2": 2.5, "w2": 0.0 },
+        "derivatives": {
+          "th1": "w1",
+          "w1":  "(-g*(2*m1+m2)*sin(th1) - m2*g*sin(th1-2*th2) - 2*sin(th1-th2)*m2*(w2^2*L2 + w1^2*L1*cos(th1-th2))) / (L1*(2*m1+m2 - m2*cos(2*(th1-th2))))",
+          "th2": "w2",
+          "w2":  "(2*sin(th1-th2)*(w1^2*L1*(m1+m2) + g*(m1+m2)*cos(th1) + w2^2*L2*m2*cos(th1-th2))) / (L2*(2*m1+m2 - m2*cos(2*(th1-th2))))"
         },
-        "functions": {
-          "A": { "args": ["t"], "body": "amplitude * exp(-decay * t)" },
-          "E": {
-            "args": ["s", "t"],
-            "body": "clamp(omega * t - abs(k * s), 0, 1)"
-          }
+        "solver": "rk4",
+        "step": 0.005
+      },
+      {
+        "id": "trace",
+        "type": "parametric_path",
+        "style": { "stroke": "#44aaff55", "stroke_width": 1.5, "fill": "none" },
+        "domain": { "s": [0, 1], "samples": 1500 },
+        "params": { "y_off": 110 },
+        "equations": {
+          "x": "L1*ppm*sin(phys_th1(clamp(s,0,root_t)*root_d)) + L2*ppm*sin(phys_th2(clamp(s,0,root_t)*root_d))",
+          "y": "y_off - L1*ppm*cos(phys_th1(clamp(s,0,root_t)*root_d)) - L2*ppm*cos(phys_th2(clamp(s,0,root_t)*root_d))"
         },
         "timeline": { "start": 0.0, "end": 1.0 }
       },
       {
-        "id": "baseline",
+        "id": "arm1",
         "type": "line",
-        "style": { "stroke": "#ffffff22", "stroke_width": 1 },
-        "equations": { "x1": "-500", "y1": "0", "x2": "500", "y2": "0" },
+        "style": { "stroke": "#9999bb", "stroke_width": 2.5 },
+        "params": { "y_off": 110 },
+        "equations": {
+          "x1": "0", "y1": "y_off",
+          "x2": "L1*ppm*sin(phys_th1(t*d))",
+          "y2": "y_off - L1*ppm*cos(phys_th1(t*d))"
+        },
+        "timeline": { "start": 0.0, "end": 1.0 }
+      },
+      {
+        "id": "arm2",
+        "type": "line",
+        "style": { "stroke": "#9999bb", "stroke_width": 2.5 },
+        "params": { "y_off": 110 },
+        "equations": {
+          "x1": "L1*ppm*sin(phys_th1(t*d))",
+          "y1": "y_off - L1*ppm*cos(phys_th1(t*d))",
+          "x2": "L1*ppm*sin(phys_th1(t*d)) + L2*ppm*sin(phys_th2(t*d))",
+          "y2": "y_off - L1*ppm*cos(phys_th1(t*d)) - L2*ppm*cos(phys_th2(t*d))"
+        },
+        "timeline": { "start": 0.0, "end": 1.0 }
+      },
+      {
+        "id": "bob2",
+        "type": "circle",
+        "style": { "fill": "#ff7744", "stroke": "#ff994455", "stroke_width": 2 },
+        "params": { "y_off": 110 },
+        "equations": {
+          "cx": "L1*ppm*sin(phys_th1(t*d)) + L2*ppm*sin(phys_th2(t*d))",
+          "cy": "y_off - L1*ppm*cos(phys_th1(t*d)) - L2*ppm*cos(phys_th2(t*d))",
+          "r":  "12"
+        },
         "timeline": { "start": 0.0, "end": 1.0 }
       }
     ]
