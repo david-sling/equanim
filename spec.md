@@ -2,7 +2,7 @@
 
 A declarative, JSON-based animation specification. Every visual property is a math expression evaluated at runtime. Four time/duration variables are always available in every expression: `t` (local 0→1), `d` (local seconds), `root_t` (global 0→1), and `root_d` (total seconds). Specs are designed to be AI-generatable, renderer-agnostic, and human-readable.
 
-<video src="renderer/assets/double-pendulum.mp4" autoplay loop muted playsinline></video>
+![Double Pendulum](renderer/assets/double-pendulum.gif)
 
 ---
 
