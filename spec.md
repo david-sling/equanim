@@ -21,15 +21,16 @@ A declarative, JSON-based animation specification. Every visual property is a ma
 
 ## `meta` block
 
-| Field               | Type   | Description                       |
-| ------------------- | ------ | --------------------------------- |
-| `title`             | string | Human-readable name               |
-| `duration`          | number | Total animation length in seconds |
-| `width`             | number | Output width in px                |
-| `height`            | number | Output height in px               |
-| `fps`               | number | Frames per second                 |
-| `coordinate_system` | string | Always `"cartesian"` for now      |
-| `origin`            | string | `"center"` or `"top-left"`        |
+| Field               | Type   | Required | Description                                          |
+| ------------------- | ------ | -------- | ---------------------------------------------------- |
+| `title`             | string | yes      | Human-readable name                                  |
+| `duration`          | number | yes      | Total animation length in seconds                    |
+| `width`             | number | yes      | Output width in px                                   |
+| `height`            | number | yes      | Output height in px                                  |
+| `fps`               | number | yes      | Frames per second                                    |
+| `coordinate_system` | string | yes      | Always `"cartesian"` for now                         |
+| `origin`            | string | yes      | `"center"` or `"top-left"`                           |
+| `background`        | string | no       | CSS color for the canvas background. Default `"#0a0a0f"` |
 
 ---
 
@@ -210,6 +211,108 @@ A filled or stroked circle defined by its centre and radius as equations.
 
 ---
 
+## Physics systems
+
+Physics systems are non-renderable scene nodes that pre-compute trajectories before playback. Their state variables are exposed as callable interpolators in every sibling object's expression scope. All interpolators take **absolute seconds** as their argument (e.g. `t * d`).
+
+### `ode_system`
+
+Integrates a system of first-order ordinary differential equations (RK4). Good for smooth, continuous dynamics: pendulums, springs, orbital mechanics.
+
+```json
+{
+  "id": "phys",
+  "type": "ode_system",
+  "state": { "th1": 2.0, "w1": 0.0, "th2": 2.5, "w2": 0.0 },
+  "derivatives": {
+    "th1": "w1",
+    "w1":  "(-g*(2*m1+m2)*sin(th1) - ...) / (L1*(...))",
+    "th2": "w2",
+    "w2":  "(2*sin(th1-th2)*(...)) / (L2*(...))"
+  },
+  "solver": "rk4",
+  "step": 0.005
+}
+```
+
+| Field         | Type   | Description                                                    |
+| ------------- | ------ | -------------------------------------------------------------- |
+| `state`       | object | Initial values for each state variable                         |
+| `derivatives` | object | One mathjs expression per state variable; its time derivative  |
+| `solver`      | string | Integration method. Currently only `"rk4"` is supported        |
+| `step`        | number | Integration step in seconds. Smaller = more accurate           |
+
+**Exposed interpolators** (callable in sibling expressions):
+
+`<id>_<var>(t_seconds)` — e.g. `phys_th1(t * d)`, `phys_w2(t * d)`
+
+---
+
+### `collision_system`
+
+Simulates rigid-body collisions using a discrete-time impulse solver. Each step applies friction, integrates positions (Euler), resolves wall bounces, then resolves ball-ball contacts with multiple correction passes. Good for billiards, particle systems, and anything with hard contact cascades.
+
+```json
+{
+  "id": "pool",
+  "type": "collision_system",
+  "bounds": { "x": [-360, 360], "y": [-165, 165] },
+  "restitution": 0.85,
+  "friction": 60,
+  "step": 0.001,
+  "delay": 0.5,
+  "bodies": {
+    "cue": { "x": -230, "y": 0, "vx": 0, "vy": 0, "r": 10, "m": 1 },
+    "b1":  { "x":  120, "y": 0, "vx": 0, "vy": 0, "r": 10 }
+  }
+}
+```
+
+| Field         | Type          | Required | Description                                                       |
+| ------------- | ------------- | -------- | ----------------------------------------------------------------- |
+| `bounds`      | object        | no       | `{ "x": [min, max], "y": [min, max] }` — wall boundaries         |
+| `restitution` | number/string | no       | Coefficient of restitution (0 = perfectly inelastic, 1 = elastic). Accepts a variable name. Default `0.9` |
+| `friction`    | number/string | no       | Deceleration in px/s². Accepts a variable name. Default `80`     |
+| `step`        | number        | no       | Simulation step in seconds. Default `0.002`                       |
+| `delay`       | number        | no       | Seconds to hold all dynamic bodies at rest before physics begin. Default `0` |
+| `bodies`      | object        | yes      | Named body definitions (see below)                               |
+
+**Exposed interpolators** (callable in sibling expressions):
+
+`<id>_<bodyId>_x(t_seconds)` and `<id>_<bodyId>_y(t_seconds)` — e.g. `pool_cue_x(t * d)`, `pool_b1_y(t * d)`
+
+#### Body definition
+
+Each body in `bodies` is a `CollisionBall`:
+
+| Field       | Type          | Required | Description                                                       |
+| ----------- | ------------- | -------- | ----------------------------------------------------------------- |
+| `kinematic` | boolean       | no       | If `true`, the body follows a prescribed path (see below). Default: dynamic. |
+| `x`         | number/string | yes      | Initial x position (dynamic) or x expression in `t` seconds (kinematic) |
+| `y`         | number/string | yes      | Initial y position (dynamic) or y expression in `t` seconds (kinematic) |
+| `vx`        | number/string | no       | Initial x velocity. Accepts a variable expression. Dynamic only. |
+| `vy`        | number/string | no       | Initial y velocity. Accepts a variable expression. Dynamic only. |
+| `r`         | number        | yes      | Radius in spec units                                              |
+| `m`         | number        | no       | Mass. Default `1`. Ignored for kinematic bodies.                  |
+
+**Kinematic bodies** (`kinematic: true`) follow a prescribed path — `x` and `y` are mathjs expression strings evaluated at each time step with `t` in **seconds** in scope (along with all spec `variables`). A kinematic body imparts elastic impulses to dynamic bodies on contact but is never pushed back — it behaves as though it has infinite mass. Position is never corrected; the path expression is authoritative.
+
+This is the right model for a cue stick, a scripted paddle, or any animated surface that should drive physics without being driven by it.
+
+```json
+{
+  "id": "stick_tip",
+  "kinematic": true,
+  "x": "-230 + cos(angle * pi / 180) * (min(cue_speed / (1 + restitution) * t, 80) - 60)",
+  "y": "4   + sin(angle * pi / 180) * (min(cue_speed / (1 + restitution) * t, 80) - 60)",
+  "r": 5
+}
+```
+
+Note: `vx`/`vy`/`m` are unused for kinematic bodies. Velocity is derived from the position delta each step and used only for impulse calculations.
+
+---
+
 ## Expression syntax
 
 Equations are math expression strings evaluated at runtime using [mathjs](https://mathjs.org/).
@@ -234,15 +337,16 @@ Four time/duration variables are always available. They come in two pairs — lo
 
 **Future group scoping:** When groups are introduced, each group will expose its own `<group_id>_t` and `<group_id>_d` to its children, following the same pattern. Object and group IDs must therefore be valid identifiers: letters, digits, and underscores only; no hyphens; cannot start with a digit.
 
-| Name       | Available in      | Description                                              |
-| ---------- | ----------------- | -------------------------------------------------------- |
-| `t`        | all equations     | Local normalised time 0→1 over this object's window      |
-| `d`        | all equations     | Local duration in seconds                                |
-| `root_t`   | all equations     | Global normalised time 0→1 over the full animation       |
-| `root_d`   | all equations     | Total animation duration in seconds                      |
-| `s`        | `parametric_path` | Spatial parameter swept across `domain.s`                |
-| _(params)_ | all equations     | Keys from the object's `params` block                    |
-| _(vars)_   | all equations     | Keys from the spec's `variables` block (override params) |
+| Name       | Available in                    | Description                                              |
+| ---------- | ------------------------------- | -------------------------------------------------------- |
+| `t`        | all equations                   | Local normalised time 0→1 over this object's window      |
+| `d`        | all equations                   | Local duration in seconds                                |
+| `root_t`   | all equations                   | Global normalised time 0→1 over the full animation       |
+| `root_d`   | all equations                   | Total animation duration in seconds                      |
+| `s`        | `parametric_path`               | Spatial parameter swept across `domain.s`                |
+| `t`        | kinematic body `x`/`y` exprs   | **Seconds elapsed** (not normalised). Kinematic paths live outside any object timeline, so absolute time is the natural unit. |
+| _(params)_ | all equations                   | Keys from the object's `params` block                    |
+| _(vars)_   | all equations + kinematic exprs | Keys from the spec's `variables` block (override params) |
 
 ### Math builtins
 
@@ -250,12 +354,21 @@ Four time/duration variables are always available. They come in two pairs — lo
 | -------------------- | --------------------------- |
 | `sin(x)`             | Sine                        |
 | `cos(x)`             | Cosine                      |
+| `tan(x)`             | Tangent                     |
 | `exp(x)`             | e^x                         |
+| `log(x)`             | Natural logarithm           |
 | `abs(x)`             | Absolute value              |
-| `clamp(x, min, max)` | Clamp x between min and max |
 | `sqrt(x)`            | Square root                 |
 | `pow(x, n)`          | x to the power n            |
+| `min(a, b)`          | Smaller of two values       |
+| `max(a, b)`          | Larger of two values        |
+| `clamp(x, lo, hi)`   | Clamp x between lo and hi   |
+| `floor(x)`           | Round down to integer       |
+| `ceil(x)`            | Round up to integer         |
 | `pi`                 | 3.14159...                  |
+| `e`                  | 2.71828...                  |
+
+The full mathjs function set is available. The table above lists the most commonly used subset.
 
 ### `params` block
 

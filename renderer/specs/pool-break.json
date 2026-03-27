@@ -51,10 +51,15 @@
         "friction": "friction",
         "step": 0.001,
         "bodies": {
+          "stick_tip": {
+            "kinematic": true,
+            "x": "-230 + cos(angle * pi / 180) * (min(cue_speed / (1 + restitution) * t, 80) - 60)",
+            "y": "4   + sin(angle * pi / 180) * (min(cue_speed / (1 + restitution) * t, 80) - 60)",
+            "r": 5
+          },
           "cue": {
             "x": -230, "y": 4,
-            "vx": "cue_speed * cos(angle * pi / 180)",
-            "vy": "cue_speed * sin(angle * pi / 180)",
+            "vx": 0, "vy": 0,
             "r": 10, "m": 1
           },
           "b1":  { "x": 120,    "y": 0,    "vx": 0, "vy": 0, "r": 10, "m": 1 },
@@ -102,6 +107,19 @@
         "style": { "stroke": "#5a3a1a", "stroke_width": 4 },
         "equations": { "x1": "360", "y1": "-165", "x2": "360", "y2": "165" },
         "timeline": { "start": 0, "end": 1 }
+      },
+
+      {
+        "id": "cue_stick",
+        "type": "line",
+        "style": { "stroke": "#c8a45a", "stroke_width": 5, "stroke_linecap": "round" },
+        "equations": {
+          "x1": "pool_stick_tip_x(t * d) - 160 * cos(angle * pi / 180)",
+          "y1": "pool_stick_tip_y(t * d) - 160 * sin(angle * pi / 180)",
+          "x2": "pool_stick_tip_x(t * d)",
+          "y2": "pool_stick_tip_y(t * d)"
+        },
+        "timeline": { "start": 0, "end": 0.12 }
       },
 
       {

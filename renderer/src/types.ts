@@ -189,19 +189,28 @@ export interface OdeSystem {
 
 /**
  * A body inside a CollisionSystem.
- * Position and velocity fields accept either a plain number or a mathjs
- * expression string that is evaluated against the current VarValues before
- * the simulation runs. This lets variables (e.g. cue_speed, angle) drive
- * initial conditions interactively.
+ *
+ * **Dynamic body** (default): `x`/`y`/`vx`/`vy` are initial conditions
+ * (number or mathjs expression evaluated once against VarValues). The solver
+ * integrates them forward in time subject to friction and collisions.
+ *
+ * **Kinematic body** (`kinematic: true`): `x` and `y` are mathjs expression
+ * strings evaluated at *every time step* with `t` (seconds) in scope. The
+ * body follows a prescribed path, imparts impulses to dynamic bodies on
+ * contact, but does not receive any itself — equivalent to infinite mass.
+ * Velocity is derived from the position delta each step. `vx`/`vy`/`m` are
+ * ignored. Useful for cue sticks, scripted paddles, animated walls, etc.
  */
 export interface CollisionBall {
+  /** `true` → kinematic (prescribed path); omit or `false` → dynamic. */
+  kinematic?: true;
   x: number | string;
   y: number | string;
-  vx: number | string;
-  vy: number | string;
+  vx?: number | string;
+  vy?: number | string;
   /** Radius in spec units (pixels). */
   r: number;
-  /** Mass. Defaults to 1. */
+  /** Mass. Defaults to 1. Ignored for kinematic bodies. */
   m?: number;
 }
 
@@ -236,6 +245,12 @@ export interface CollisionSystem {
   friction?: number | string;
   /** Time step in seconds. Default: 0.002. */
   step?: number;
+  /**
+   * How many seconds to hold all balls at their initial positions before
+   * physics begin. Useful for showing a cue-stick wind-up or other pre-shot
+   * animation. Default: 0.
+   */
+  delay?: number;
   /** Named bodies with initial conditions. */
   bodies: Record<string, CollisionBall>;
 }

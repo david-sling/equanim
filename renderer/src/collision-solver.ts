@@ -25,11 +25,14 @@ function evalNum(
  * Run the collision simulation and write results into an existing CollisionRef.
  *
  * Algorithm (per time step):
- *   1. Apply friction deceleration and integrate positions.
- *   2. Resolve ball-wall collisions (reflect velocity, correct position).
+ *   0. Update kinematic bodies from their prescribed position expressions.
+ *      Their velocity is computed as Δpos/dt and used only for impulse calc.
+ *   1. Apply friction deceleration and integrate dynamic bodies.
+ *   2. Resolve ball-wall collisions (dynamic only).
  *   3. Resolve ball-ball collisions (elastic impulse + position correction),
  *      repeated for `PASSES` iterations for stability under dense contacts.
- *   4. Record positions.
+ *      Kinematic bodies impart impulse but don't receive it (infinite mass).
+ *   4. Record positions for all bodies.
  *
  * This is an impulse-based sequential solver. It is not physically exact
  * (no continuous event detection) but is visually accurate at small step
@@ -61,31 +64,79 @@ export function solveCollisionsInto(
     ref.trajectories[`${id}_y`] = new Float64Array(nSteps);
   }
 
-  // Build mutable state from initial conditions (supports expression strings)
-  type BallState = { x: number; y: number; vx: number; vy: number; r: number; m: number };
+  // Build mutable state from initial conditions
+  type BallState = {
+    x: number; y: number;
+    vx: number; vy: number;
+    r: number; m: number;
+    kinematic: boolean;
+    xExpr?: string;
+    yExpr?: string;
+  };
+
   const state: Record<string, BallState> = {};
   for (const [id, ball] of Object.entries(system.bodies)) {
+    const isKinematic = ball.kinematic === true;
+    // For kinematic bodies x/y must be expression strings; evaluate at t=0 for initial pos
+    const x0 = evalNum(ball.x, 0, { ...vars, t: 0 });
+    const y0 = evalNum(ball.y, 0, { ...vars, t: 0 });
     state[id] = {
-      x:  evalNum(ball.x,  0, vars),
-      y:  evalNum(ball.y,  0, vars),
-      vx: evalNum(ball.vx, 0, vars),
-      vy: evalNum(ball.vy, 0, vars),
+      x:  x0,
+      y:  y0,
+      vx: isKinematic ? 0 : evalNum(ball.vx, 0, vars),
+      vy: isKinematic ? 0 : evalNum(ball.vy, 0, vars),
       r:  ball.r,
-      m:  ball.m ?? 1,
+      m:  isKinematic ? Infinity : (ball.m ?? 1),
+      kinematic: isKinematic,
+      xExpr: isKinematic ? String(ball.x) : undefined,
+      yExpr: isKinematic ? String(ball.y) : undefined,
     };
-    ref.trajectories[`${id}_x`]![0] = state[id]!.x;
-    ref.trajectories[`${id}_y`]![0] = state[id]!.y;
+    ref.trajectories[`${id}_x`]![0] = x0;
+    ref.trajectories[`${id}_y`]![0] = y0;
   }
 
-  const balls      = Object.values(state);
-  const ballIds    = Object.keys(state);
-  const n          = balls.length;
+  const balls   = Object.values(state);
+  const ballIds = Object.keys(state);
+  const n       = balls.length;
+
+  // ── Delay: hold dynamic balls at rest until physics kick in ────────────────
+  const delay      = system.delay ?? 0;
+  const delaySteps = Math.min(nSteps - 1, Math.round(delay / dt));
+
+  for (let step = 1; step <= delaySteps; step++) {
+    const t = step * dt;
+    for (let k = 0; k < n; k++) {
+      const id   = ballIds[k]!;
+      const ball = balls[k]!;
+      // Still update kinematic bodies even during delay
+      if (ball.kinematic && ball.xExpr !== undefined) {
+        ball.x = evalNum(ball.xExpr, ball.x, { ...vars, t });
+        ball.y = evalNum(ball.yExpr!, ball.y, { ...vars, t });
+      }
+      ref.trajectories[`${id}_x`]![step] = ball.x;
+      ref.trajectories[`${id}_y`]![step] = ball.y;
+    }
+  }
 
   // ── Integration loop ────────────────────────────────────────────────────────
-  for (let step = 1; step < nSteps; step++) {
+  for (let step = delaySteps + 1; step < nSteps; step++) {
+    const t = step * dt;
 
-    // 1. Friction + Euler position step
+    // 0. Update kinematic bodies from prescribed expressions
     for (const ball of balls) {
+      if (!ball.kinematic || ball.xExpr === undefined) continue;
+      const prevX = ball.x;
+      const prevY = ball.y;
+      ball.x  = evalNum(ball.xExpr, ball.x, { ...vars, t });
+      ball.y  = evalNum(ball.yExpr!, ball.y, { ...vars, t });
+      // Derive velocity for impulse calculations
+      ball.vx = (ball.x - prevX) / dt;
+      ball.vy = (ball.y - prevY) / dt;
+    }
+
+    // 1. Friction + Euler position step (dynamic only)
+    for (const ball of balls) {
+      if (ball.kinematic) continue;
       const speed = Math.sqrt(ball.vx * ball.vx + ball.vy * ball.vy);
       if (speed > 1e-6) {
         const decel = Math.min(friction * dt, speed);
@@ -100,9 +151,10 @@ export function solveCollisionsInto(
       ball.y += ball.vy * dt;
     }
 
-    // 2. Wall collisions
+    // 2. Wall collisions (dynamic only)
     if (bounds) {
       for (const ball of balls) {
+        if (ball.kinematic) continue;
         if (ball.x - ball.r < bounds.x[0]) {
           ball.x  = bounds.x[0] + ball.r;
           ball.vx = Math.abs(ball.vx) * restitution;
@@ -127,6 +179,9 @@ export function solveCollisionsInto(
           const a = balls[i]!;
           const b = balls[j]!;
 
+          // Two kinematic bodies never interact
+          if (a.kinematic && b.kinematic) continue;
+
           const dx   = b.x - a.x;
           const dy   = b.y - a.y;
           const d2   = dx * dx + dy * dy;
@@ -135,26 +190,52 @@ export function solveCollisionsInto(
           if (d2 >= dmin * dmin || d2 < 1e-12) continue;
 
           const dist = Math.sqrt(d2);
-          const nx   = dx / dist;
+          const nx   = dx / dist;  // unit normal from a → b
           const ny   = dy / dist;
-          const tm   = a.m + b.m;
 
-          // Elastic impulse (only when approaching)
+          // Relative velocity along normal (positive = approaching)
           const dvn = (a.vx - b.vx) * nx + (a.vy - b.vy) * ny;
+
           if (dvn > 0) {
-            const impulse = (1 + restitution) * a.m * b.m / tm * dvn;
-            a.vx -= impulse / a.m * nx;
-            a.vy -= impulse / a.m * ny;
-            b.vx += impulse / b.m * nx;
-            b.vy += impulse / b.m * ny;
+            if (a.kinematic) {
+              // a is kinematic (infinite mass): only b gets impulse
+              // v_b_new = v_b + (1+e)*dvn * n  (b accelerates away from a)
+              b.vx += (1 + restitution) * dvn * nx;
+              b.vy += (1 + restitution) * dvn * ny;
+            } else if (b.kinematic) {
+              // b is kinematic (infinite mass): only a gets impulse
+              // v_a_new = v_a - (1+e)*dvn * n  (a bounces back from b)
+              a.vx -= (1 + restitution) * dvn * nx;
+              a.vy -= (1 + restitution) * dvn * ny;
+            } else {
+              // Both dynamic: standard elastic impulse
+              const tm      = a.m + b.m;
+              const impulse = (1 + restitution) * a.m * b.m / tm * dvn;
+              a.vx -= impulse / a.m * nx;
+              a.vy -= impulse / a.m * ny;
+              b.vx += impulse / b.m * nx;
+              b.vy += impulse / b.m * ny;
+            }
           }
 
-          // Position correction — push balls apart proportional to mass ratio
+          // Position correction — push bodies apart
           const overlap = dmin - dist;
-          a.x -= nx * overlap * b.m / tm;
-          a.y -= ny * overlap * b.m / tm;
-          b.x += nx * overlap * a.m / tm;
-          b.y += ny * overlap * a.m / tm;
+          if (a.kinematic) {
+            // Only move b
+            b.x += nx * overlap;
+            b.y += ny * overlap;
+          } else if (b.kinematic) {
+            // Only move a
+            a.x -= nx * overlap;
+            a.y -= ny * overlap;
+          } else {
+            // Both dynamic: split by mass ratio
+            const tm = a.m + b.m;
+            a.x -= nx * overlap * b.m / tm;
+            a.y -= ny * overlap * b.m / tm;
+            b.x += nx * overlap * a.m / tm;
+            b.y += ny * overlap * a.m / tm;
+          }
         }
       }
     }
