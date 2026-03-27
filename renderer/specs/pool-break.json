@@ -1,0 +1,285 @@
+{
+  "spec": "equanim/0.1",
+  "meta": {
+    "title": "Pool Break",
+    "duration": 8.0,
+    "width": 800,
+    "height": 400,
+    "fps": 60,
+    "coordinate_system": "cartesian",
+    "origin": "center",
+    "background": "#1a6b2f"
+  },
+  "variables": {
+    "cue_speed": {
+      "label": "Cue Speed",
+      "default": 600,
+      "min": 200,
+      "max": 1000,
+      "step": 10
+    },
+    "angle": {
+      "label": "Angle (deg)",
+      "default": 2,
+      "min": -15,
+      "max": 15,
+      "step": 0.5
+    },
+    "restitution": {
+      "label": "Restitution",
+      "default": 0.85,
+      "min": 0.3,
+      "max": 1.0,
+      "step": 0.05
+    },
+    "friction": {
+      "label": "Friction",
+      "default": 60,
+      "min": 0,
+      "max": 200,
+      "step": 5
+    }
+  },
+  "scene": {
+    "id": "root",
+    "objects": [
+      {
+        "id": "pool",
+        "type": "collision_system",
+        "bounds": { "x": [-360, 360], "y": [-165, 165] },
+        "restitution": "restitution",
+        "friction": "friction",
+        "step": 0.001,
+        "bodies": {
+          "cue": {
+            "x": -230, "y": 4,
+            "vx": "cue_speed * cos(angle * pi / 180)",
+            "vy": "cue_speed * sin(angle * pi / 180)",
+            "r": 10, "m": 1
+          },
+          "b1":  { "x": 120,    "y": 0,    "vx": 0, "vy": 0, "r": 10, "m": 1 },
+          "b2":  { "x": 137.32, "y": 10,   "vx": 0, "vy": 0, "r": 10, "m": 1 },
+          "b3":  { "x": 137.32, "y": -10,  "vx": 0, "vy": 0, "r": 10, "m": 1 },
+          "b4":  { "x": 154.64, "y": 20,   "vx": 0, "vy": 0, "r": 10, "m": 1 },
+          "b5":  { "x": 154.64, "y": 0,    "vx": 0, "vy": 0, "r": 10, "m": 1 },
+          "b6":  { "x": 154.64, "y": -20,  "vx": 0, "vy": 0, "r": 10, "m": 1 },
+          "b7":  { "x": 171.96, "y": 30,   "vx": 0, "vy": 0, "r": 10, "m": 1 },
+          "b8":  { "x": 171.96, "y": 10,   "vx": 0, "vy": 0, "r": 10, "m": 1 },
+          "b9":  { "x": 171.96, "y": -10,  "vx": 0, "vy": 0, "r": 10, "m": 1 },
+          "b10": { "x": 171.96, "y": -30,  "vx": 0, "vy": 0, "r": 10, "m": 1 },
+          "b11": { "x": 189.28, "y": 40,   "vx": 0, "vy": 0, "r": 10, "m": 1 },
+          "b12": { "x": 189.28, "y": 20,   "vx": 0, "vy": 0, "r": 10, "m": 1 },
+          "b13": { "x": 189.28, "y": 0,    "vx": 0, "vy": 0, "r": 10, "m": 1 },
+          "b14": { "x": 189.28, "y": -20,  "vx": 0, "vy": 0, "r": 10, "m": 1 },
+          "b15": { "x": 189.28, "y": -40,  "vx": 0, "vy": 0, "r": 10, "m": 1 }
+        }
+      },
+
+      {
+        "id": "cushion_top",
+        "type": "line",
+        "style": { "stroke": "#5a3a1a", "stroke_width": 4 },
+        "equations": { "x1": "-360", "y1": "165", "x2": "360", "y2": "165" },
+        "timeline": { "start": 0, "end": 1 }
+      },
+      {
+        "id": "cushion_bottom",
+        "type": "line",
+        "style": { "stroke": "#5a3a1a", "stroke_width": 4 },
+        "equations": { "x1": "-360", "y1": "-165", "x2": "360", "y2": "-165" },
+        "timeline": { "start": 0, "end": 1 }
+      },
+      {
+        "id": "cushion_left",
+        "type": "line",
+        "style": { "stroke": "#5a3a1a", "stroke_width": 4 },
+        "equations": { "x1": "-360", "y1": "-165", "x2": "-360", "y2": "165" },
+        "timeline": { "start": 0, "end": 1 }
+      },
+      {
+        "id": "cushion_right",
+        "type": "line",
+        "style": { "stroke": "#5a3a1a", "stroke_width": 4 },
+        "equations": { "x1": "360", "y1": "-165", "x2": "360", "y2": "165" },
+        "timeline": { "start": 0, "end": 1 }
+      },
+
+      {
+        "id": "circle_cue",
+        "type": "circle",
+        "style": { "fill": "#f0f0f0", "stroke": "#cccccc", "stroke_width": 1 },
+        "equations": {
+          "cx": "pool_cue_x(t * d)",
+          "cy": "pool_cue_y(t * d)",
+          "r": "10"
+        },
+        "timeline": { "start": 0, "end": 1 }
+      },
+      {
+        "id": "circle_b1",
+        "type": "circle",
+        "style": { "fill": "#f5c518", "stroke": "#c9a000", "stroke_width": 1 },
+        "equations": {
+          "cx": "pool_b1_x(t * d)",
+          "cy": "pool_b1_y(t * d)",
+          "r": "10"
+        },
+        "timeline": { "start": 0, "end": 1 }
+      },
+      {
+        "id": "circle_b2",
+        "type": "circle",
+        "style": { "fill": "#1155cc", "stroke": "#0d44aa", "stroke_width": 1 },
+        "equations": {
+          "cx": "pool_b2_x(t * d)",
+          "cy": "pool_b2_y(t * d)",
+          "r": "10"
+        },
+        "timeline": { "start": 0, "end": 1 }
+      },
+      {
+        "id": "circle_b3",
+        "type": "circle",
+        "style": { "fill": "#cc2222", "stroke": "#aa1111", "stroke_width": 1 },
+        "equations": {
+          "cx": "pool_b3_x(t * d)",
+          "cy": "pool_b3_y(t * d)",
+          "r": "10"
+        },
+        "timeline": { "start": 0, "end": 1 }
+      },
+      {
+        "id": "circle_b4",
+        "type": "circle",
+        "style": { "fill": "#8822aa", "stroke": "#6d1a88", "stroke_width": 1 },
+        "equations": {
+          "cx": "pool_b4_x(t * d)",
+          "cy": "pool_b4_y(t * d)",
+          "r": "10"
+        },
+        "timeline": { "start": 0, "end": 1 }
+      },
+      {
+        "id": "circle_b5",
+        "type": "circle",
+        "style": { "fill": "#ee6600", "stroke": "#cc5500", "stroke_width": 1 },
+        "equations": {
+          "cx": "pool_b5_x(t * d)",
+          "cy": "pool_b5_y(t * d)",
+          "r": "10"
+        },
+        "timeline": { "start": 0, "end": 1 }
+      },
+      {
+        "id": "circle_b6",
+        "type": "circle",
+        "style": { "fill": "#118833", "stroke": "#0d6d28", "stroke_width": 1 },
+        "equations": {
+          "cx": "pool_b6_x(t * d)",
+          "cy": "pool_b6_y(t * d)",
+          "r": "10"
+        },
+        "timeline": { "start": 0, "end": 1 }
+      },
+      {
+        "id": "circle_b7",
+        "type": "circle",
+        "style": { "fill": "#883300", "stroke": "#6d2900", "stroke_width": 1 },
+        "equations": {
+          "cx": "pool_b7_x(t * d)",
+          "cy": "pool_b7_y(t * d)",
+          "r": "10"
+        },
+        "timeline": { "start": 0, "end": 1 }
+      },
+      {
+        "id": "circle_b8",
+        "type": "circle",
+        "style": { "fill": "#111111", "stroke": "#333333", "stroke_width": 1 },
+        "equations": {
+          "cx": "pool_b8_x(t * d)",
+          "cy": "pool_b8_y(t * d)",
+          "r": "10"
+        },
+        "timeline": { "start": 0, "end": 1 }
+      },
+      {
+        "id": "circle_b9",
+        "type": "circle",
+        "style": { "fill": "#f5c518", "stroke": "#c9a000", "stroke_width": 2 },
+        "equations": {
+          "cx": "pool_b9_x(t * d)",
+          "cy": "pool_b9_y(t * d)",
+          "r": "10"
+        },
+        "timeline": { "start": 0, "end": 1 }
+      },
+      {
+        "id": "circle_b10",
+        "type": "circle",
+        "style": { "fill": "#1155cc", "stroke": "#0d44aa", "stroke_width": 2 },
+        "equations": {
+          "cx": "pool_b10_x(t * d)",
+          "cy": "pool_b10_y(t * d)",
+          "r": "10"
+        },
+        "timeline": { "start": 0, "end": 1 }
+      },
+      {
+        "id": "circle_b11",
+        "type": "circle",
+        "style": { "fill": "#cc2222", "stroke": "#aa1111", "stroke_width": 2 },
+        "equations": {
+          "cx": "pool_b11_x(t * d)",
+          "cy": "pool_b11_y(t * d)",
+          "r": "10"
+        },
+        "timeline": { "start": 0, "end": 1 }
+      },
+      {
+        "id": "circle_b12",
+        "type": "circle",
+        "style": { "fill": "#8822aa", "stroke": "#6d1a88", "stroke_width": 2 },
+        "equations": {
+          "cx": "pool_b12_x(t * d)",
+          "cy": "pool_b12_y(t * d)",
+          "r": "10"
+        },
+        "timeline": { "start": 0, "end": 1 }
+      },
+      {
+        "id": "circle_b13",
+        "type": "circle",
+        "style": { "fill": "#ee6600", "stroke": "#cc5500", "stroke_width": 2 },
+        "equations": {
+          "cx": "pool_b13_x(t * d)",
+          "cy": "pool_b13_y(t * d)",
+          "r": "10"
+        },
+        "timeline": { "start": 0, "end": 1 }
+      },
+      {
+        "id": "circle_b14",
+        "type": "circle",
+        "style": { "fill": "#118833", "stroke": "#0d6d28", "stroke_width": 2 },
+        "equations": {
+          "cx": "pool_b14_x(t * d)",
+          "cy": "pool_b14_y(t * d)",
+          "r": "10"
+        },
+        "timeline": { "start": 0, "end": 1 }
+      },
+      {
+        "id": "circle_b15",
+        "type": "circle",
+        "style": { "fill": "#883300", "stroke": "#6d2900", "stroke_width": 2 },
+        "equations": {
+          "cx": "pool_b15_x(t * d)",
+          "cy": "pool_b15_y(t * d)",
+          "r": "10"
+        },
+        "timeline": { "start": 0, "end": 1 }
+      }
+    ]
+  }
+}

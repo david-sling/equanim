@@ -25,6 +25,8 @@ export interface Meta {
   fps: number;
   coordinate_system: "cartesian";
   origin: "center" | "top-left";
+  /** Canvas background color. Defaults to "#0a0a0f". */
+  background?: string;
 }
 
 // ─── Scene ────────────────────────────────────────────────────────────────────
@@ -185,10 +187,63 @@ export interface OdeSystem {
   step?: number;
 }
 
+/**
+ * A body inside a CollisionSystem.
+ * Position and velocity fields accept either a plain number or a mathjs
+ * expression string that is evaluated against the current VarValues before
+ * the simulation runs. This lets variables (e.g. cue_speed, angle) drive
+ * initial conditions interactively.
+ */
+export interface CollisionBall {
+  x: number | string;
+  y: number | string;
+  vx: number | string;
+  vy: number | string;
+  /** Radius in spec units (pixels). */
+  r: number;
+  /** Mass. Defaults to 1. */
+  m?: number;
+}
+
+/**
+ * A discrete-time collision simulation node.
+ *
+ * Unlike ode_system (which solves smooth ODEs), collision_system uses a
+ * position-impulse solver at each time step: friction is applied, positions
+ * are updated, then ball-ball and ball-wall collisions are resolved with
+ * multiple correction passes. The result is pre-computed over the full
+ * animation duration and stored as trajectory arrays.
+ *
+ * State variables exposed as interpolators in sibling expression scopes:
+ *   `<id>_<bodyId>_x(t)` and `<id>_<bodyId>_y(t)`
+ *
+ * Example: system id "pool", body "cue" → pool_cue_x(t*d), pool_cue_y(t*d)
+ */
+export interface CollisionSystem {
+  id: string;
+  type: "collision_system";
+  /** Table boundary in spec space. If omitted, walls are infinite. */
+  bounds?: { x: [number, number]; y: [number, number] };
+  /**
+   * Coefficient of restitution 0–1. Can be a number or expression string.
+   * Default: 0.9
+   */
+  restitution?: number | string;
+  /**
+   * Friction deceleration in spec-units/s². Can be a number or expression string.
+   * Default: 80
+   */
+  friction?: number | string;
+  /** Time step in seconds. Default: 0.002. */
+  step?: number;
+  /** Named bodies with initial conditions. */
+  bodies: Record<string, CollisionBall>;
+}
+
 // ─── Unions ───────────────────────────────────────────────────────────────────
 
 /** A visual primitive — the things that actually get drawn. */
 export type SceneObject = ParametricPath | Line | Circle;
 
 /** Any node that can appear in scene.objects, including non-renderable systems. */
-export type SceneNode = SceneObject | OdeSystem;
+export type SceneNode = SceneObject | OdeSystem | CollisionSystem;

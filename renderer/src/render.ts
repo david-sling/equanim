@@ -3,6 +3,7 @@ import type {
   Meta,
   SceneObject,
   OdeSystem,
+  CollisionSystem,
   ParametricPath,
   Line,
   Circle,
@@ -11,6 +12,7 @@ import type {
 } from "./types.js";
 import { buildEvaluator, type CompiledExpr } from "./evaluator.js";
 import { createOdeRef, integrateInto, makeInterpolator, type OdeRef } from "./ode-solver.js";
+import { createCollisionRef, solveCollisionsInto } from "./collision-solver.js";
 
 // ─── Coordinate transform ─────────────────────────────────────────────────────
 
@@ -130,11 +132,10 @@ export interface PreparedScene {
   meta: Meta;
   objects: PreparedObject[];
   /**
-   * Present when the spec contains one or more ode_system nodes.
-   * Call this whenever variable values change to re-run RK4 integration
-   * with the new values. The trajectory data is updated in place inside
-   * the OdeRef objects, so interpolator functions (already captured in
-   * evaluator closures) automatically reflect the new trajectories on
+   * Present when the spec contains ode_system or collision_system nodes.
+   * Call whenever variable values change to re-run physics with new values.
+   * Trajectory data is updated in place so interpolator functions already
+   * captured in evaluator closures pick up the new data automatically on
    * the next renderFrame call — no evaluator rebuild needed.
    */
   reintegrate?: (vars: VarValues) => void;
@@ -201,37 +202,47 @@ function prepareObject(
  *               For specs without ODE systems this has no effect.
  */
 export function prepareScene(spec: Equanim, vars: VarValues = {}): PreparedScene {
-  // ── Pass 1: integrate ODE systems ─────────────────────────────────────────
+  // ── Pass 1: run physics systems (ODE + collision) ─────────────────────────
   const injectedFns: Record<string, (...args: number[]) => number> = {};
-  const odeSystems: Array<{ system: OdeSystem; ref: OdeRef }> = [];
+  const odeSystems:       Array<{ system: OdeSystem;       ref: OdeRef }> = [];
+  const collisionSystems: Array<{ system: CollisionSystem; ref: OdeRef }> = [];
 
   for (const node of spec.scene.objects) {
-    if (node.type !== "ode_system") continue;
-
-    const ref = createOdeRef(node, spec.meta.duration, vars);
-    odeSystems.push({ system: node, ref });
-
-    for (const stateVar of Object.keys(node.state)) {
-      injectedFns[`${node.id}_${stateVar}`] = makeInterpolator(ref, stateVar);
+    if (node.type === "ode_system") {
+      const ref = createOdeRef(node, spec.meta.duration, vars);
+      odeSystems.push({ system: node, ref });
+      for (const stateVar of Object.keys(node.state)) {
+        injectedFns[`${node.id}_${stateVar}`] = makeInterpolator(ref, stateVar);
+      }
+    } else if (node.type === "collision_system") {
+      const ref = createCollisionRef(node, spec.meta.duration, vars);
+      collisionSystems.push({ system: node, ref });
+      for (const bodyId of Object.keys(node.bodies)) {
+        injectedFns[`${node.id}_${bodyId}_x`] = makeInterpolator(ref, `${bodyId}_x`);
+        injectedFns[`${node.id}_${bodyId}_y`] = makeInterpolator(ref, `${bodyId}_y`);
+      }
     }
   }
 
   // ── Pass 2: compile renderable objects ────────────────────────────────────
   const objects: PreparedObject[] = [];
   for (const node of spec.scene.objects) {
-    if (node.type === "ode_system") continue;
+    if (node.type === "ode_system" || node.type === "collision_system") continue;
     objects.push(prepareObject(node as SceneObject, injectedFns));
   }
 
   // ── reintegrate callback ───────────────────────────────────────────────────
-  const reintegrate =
-    odeSystems.length > 0
-      ? (newVars: VarValues): void => {
-          for (const { system, ref } of odeSystems) {
-            integrateInto(system, spec.meta.duration, newVars, ref);
-          }
+  const needsResolve = odeSystems.length > 0 || collisionSystems.length > 0;
+  const reintegrate = needsResolve
+    ? (newVars: VarValues): void => {
+        for (const { system, ref } of odeSystems) {
+          integrateInto(system, spec.meta.duration, newVars, ref);
         }
-      : undefined;
+        for (const { system, ref } of collisionSystems) {
+          solveCollisionsInto(system, spec.meta.duration, newVars, ref);
+        }
+      }
+    : undefined;
 
   return { meta: spec.meta, objects, reintegrate };
 }

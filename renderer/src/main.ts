@@ -7,6 +7,7 @@ import dampenedWave from "../specs/dampened-wave.json";
 import bouncingBall from "../specs/bouncing-ball.json";
 import doublePendulum from "../specs/double-pendulum.json";
 import threeBody from "../specs/three-body.json";
+import poolBreak from "../specs/pool-break.json";
 
 // ─── DOM refs ─────────────────────────────────────────────────────────────────
 
@@ -39,6 +40,7 @@ const BUILT_IN_SPECS: Record<string, Equanim> = {
   "bouncing-ball": bouncingBall as Equanim,
   "double-pendulum": doublePendulum as Equanim,
   "three-body": threeBody as Equanim,
+  "pool-break": poolBreak as Equanim,
 };
 
 // ─── State ────────────────────────────────────────────────────────────────────
@@ -160,7 +162,11 @@ function loadSpec(input: Equanim | string): void {
     currentPlayer = createPlayer(
       canvas,
       prepared,
-      { onStateChange: updateUI, onTimeUpdate: updateTime },
+      {
+        background: spec.meta.background ?? "#0a0a0f",
+        onStateChange: updateUI,
+        onTimeUpdate: updateTime,
+      },
       currentVars,
     );
 
