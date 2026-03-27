@@ -46,6 +46,13 @@ let currentVars: VarValues = {};
 let currentSpecTitle = "equanim";
 let currentFps = 60;
 
+// Recording state — declared here (not near the export handler) so that
+// isRecording() is safe to call during bootstrap before those lines execute.
+let recorder: MediaRecorder | null = null;
+let recordedChunks: Blob[] = [];
+let recordingTimer: ReturnType<typeof setInterval> | null = null;
+let recordingStart = 0;
+
 // ─── Bootstrap ────────────────────────────────────────────────────────────────
 
 const defaultSpec = BUILT_IN_SPECS["double-pendulum"]!;
@@ -157,6 +164,7 @@ function loadSpec(input: Equanim | string): void {
 
     updateUI("idle");
     updateTime(0);
+    currentPlayer.play();
   } catch (e) {
     showError(`Spec error: ${(e as Error).message}`);
   }
@@ -178,7 +186,9 @@ function updateUI(state: PlayerState): void {
   resetBtn.disabled = rec;
   seekBar.disabled  = rec;
   // Stop recording when the animation naturally reaches the end
-  if (state === "ended" && rec) finishRecording();
+  if (state === "ended" && rec) { finishRecording(); return; }
+  // Loop: restart automatically unless the user is recording
+  if (state === "ended") currentPlayer.play();
 }
 
 function updateTime(t: number): void {
@@ -227,11 +237,6 @@ fileInput.addEventListener("change", () => {
 });
 
 // ─── Export (canvas → WebM via MediaRecorder) ────────────────────────────────
-
-let recorder: MediaRecorder | null = null;
-let recordedChunks: Blob[] = [];
-let recordingTimer: ReturnType<typeof setInterval> | null = null;
-let recordingStart = 0;
 
 function isRecording(): boolean {
   return recorder !== null && recorder.state !== "inactive";
