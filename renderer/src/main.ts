@@ -6,6 +6,7 @@ import type { Player, PlayerState } from "./player.js";
 import dampenedWave from "../specs/dampened-wave.json";
 import bouncingBall from "../specs/bouncing-ball.json";
 import doublePendulum from "../specs/double-pendulum.json";
+import threeBody from "../specs/three-body.json";
 
 // ─── DOM refs ─────────────────────────────────────────────────────────────────
 
@@ -37,6 +38,7 @@ const BUILT_IN_SPECS: Record<string, Equanim> = {
   "dampened-wave": dampenedWave as Equanim,
   "bouncing-ball": bouncingBall as Equanim,
   "double-pendulum": doublePendulum as Equanim,
+  "three-body": threeBody as Equanim,
 };
 
 // ─── State ────────────────────────────────────────────────────────────────────

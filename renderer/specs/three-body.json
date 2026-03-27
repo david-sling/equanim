@@ -1,0 +1,168 @@
+{
+  "spec": "equanim/0.1",
+  "meta": {
+    "title": "Three-Body Problem",
+    "duration": 25.0,
+    "width": 800,
+    "height": 800,
+    "fps": 60,
+    "coordinate_system": "cartesian",
+    "origin": "center"
+  },
+  "variables": {
+    "m1": {
+      "label": "Mass 1",
+      "default": 3.0,
+      "min": 0.2,
+      "max": 6.0,
+      "step": 0.05
+    },
+    "m2": {
+      "label": "Mass 2",
+      "default": 3.0,
+      "min": 0.2,
+      "max": 6.0,
+      "step": 0.05
+    },
+    "m3": {
+      "label": "Mass 3",
+      "default": 3.0,
+      "min": 0.2,
+      "max": 6.0,
+      "step": 0.05
+    },
+    "G": {
+      "label": "Gravity",
+      "default": 2.0,
+      "min": 0.5,
+      "max": 5.0,
+      "step": 0.1
+    },
+    "ppu": {
+      "label": "Scale (px/u)",
+      "default": 100,
+      "min": 40,
+      "max": 180,
+      "step": 10
+    }
+  },
+  "scene": {
+    "id": "root",
+    "objects": [
+      {
+        "id": "phys",
+        "type": "ode_system",
+        "state": {
+          "x1": 0.0,
+          "y1": 1.1547,
+          "vx1": -1.0,
+          "vy1": 0.0,
+          "x2": -1.0,
+          "y2": -0.5774,
+          "vx2": 0.5,
+          "vy2": -0.866,
+          "x3": 1.02,
+          "y3": -0.5774,
+          "vx3": 0.5,
+          "vy3": 0.866
+        },
+        "derivatives": {
+          "x1": "vx1",
+          "y1": "vy1",
+          "vx1": "G*m2*(x2-x1)/sqrt((x2-x1)^2+(y2-y1)^2+0.05)^3 + G*m3*(x3-x1)/sqrt((x3-x1)^2+(y3-y1)^2+0.05)^3",
+          "vy1": "G*m2*(y2-y1)/sqrt((x2-x1)^2+(y2-y1)^2+0.05)^3 + G*m3*(y3-y1)/sqrt((x3-x1)^2+(y3-y1)^2+0.05)^3",
+          "x2": "vx2",
+          "y2": "vy2",
+          "vx2": "G*m1*(x1-x2)/sqrt((x2-x1)^2+(y2-y1)^2+0.05)^3 + G*m3*(x3-x2)/sqrt((x3-x2)^2+(y3-y2)^2+0.05)^3",
+          "vy2": "G*m1*(y1-y2)/sqrt((x2-x1)^2+(y2-y1)^2+0.05)^3 + G*m3*(y3-y2)/sqrt((x3-x2)^2+(y3-y2)^2+0.05)^3",
+          "x3": "vx3",
+          "y3": "vy3",
+          "vx3": "G*m1*(x1-x3)/sqrt((x3-x1)^2+(y3-y1)^2+0.05)^3 + G*m2*(x2-x3)/sqrt((x3-x2)^2+(y3-y2)^2+0.05)^3",
+          "vy3": "G*m1*(y1-y3)/sqrt((x3-x1)^2+(y3-y1)^2+0.05)^3 + G*m2*(y2-y3)/sqrt((x3-x2)^2+(y3-y2)^2+0.05)^3"
+        },
+        "solver": "rk4",
+        "step": 0.005
+      },
+
+      {
+        "id": "trail1",
+        "type": "parametric_path",
+        "style": { "stroke": "#ff664455", "stroke_width": 1.5, "fill": "none" },
+        "domain": { "s": [0, 1], "samples": 600 },
+        "equations": {
+          "x": "ppu * phys_x1(clamp(s, 0, root_t) * root_d)",
+          "y": "ppu * phys_y1(clamp(s, 0, root_t) * root_d)"
+        },
+        "timeline": { "start": 0.0, "end": 1.0 }
+      },
+      {
+        "id": "trail2",
+        "type": "parametric_path",
+        "style": { "stroke": "#4488ff55", "stroke_width": 1.5, "fill": "none" },
+        "domain": { "s": [0, 1], "samples": 600 },
+        "equations": {
+          "x": "ppu * phys_x2(clamp(s, 0, root_t) * root_d)",
+          "y": "ppu * phys_y2(clamp(s, 0, root_t) * root_d)"
+        },
+        "timeline": { "start": 0.0, "end": 1.0 }
+      },
+      {
+        "id": "trail3",
+        "type": "parametric_path",
+        "style": { "stroke": "#44ff8855", "stroke_width": 1.5, "fill": "none" },
+        "domain": { "s": [0, 1], "samples": 600 },
+        "equations": {
+          "x": "ppu * phys_x3(clamp(s, 0, root_t) * root_d)",
+          "y": "ppu * phys_y3(clamp(s, 0, root_t) * root_d)"
+        },
+        "timeline": { "start": 0.0, "end": 1.0 }
+      },
+
+      {
+        "id": "body1",
+        "type": "circle",
+        "style": {
+          "fill": "#ff6644",
+          "stroke": "#ff886644",
+          "stroke_width": 2
+        },
+        "equations": {
+          "cx": "ppu * phys_x1(t * d)",
+          "cy": "ppu * phys_y1(t * d)",
+          "r": "4 + m1 * 4"
+        },
+        "timeline": { "start": 0.0, "end": 1.0 }
+      },
+      {
+        "id": "body2",
+        "type": "circle",
+        "style": {
+          "fill": "#4488ff",
+          "stroke": "#6699ff44",
+          "stroke_width": 2
+        },
+        "equations": {
+          "cx": "ppu * phys_x2(t * d)",
+          "cy": "ppu * phys_y2(t * d)",
+          "r": "4 + m2 * 4"
+        },
+        "timeline": { "start": 0.0, "end": 1.0 }
+      },
+      {
+        "id": "body3",
+        "type": "circle",
+        "style": {
+          "fill": "#44ff88",
+          "stroke": "#66ffaa44",
+          "stroke_width": 2
+        },
+        "equations": {
+          "cx": "ppu * phys_x3(t * d)",
+          "cy": "ppu * phys_y3(t * d)",
+          "r": "4 + m3 * 4"
+        },
+        "timeline": { "start": 0.0, "end": 1.0 }
+      }
+    ]
+  }
+}
