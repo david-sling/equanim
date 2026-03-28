@@ -12,6 +12,17 @@ export interface Equanim {
    * adjust values within [min, max] at step increments.
    */
   variables?: Variables;
+  /**
+   * Physics simulation systems, integrated before playback.
+   *
+   * Each system's state variables are exposed as named interpolation functions
+   * in every scene object's expression scope, using the convention
+   * `<id>_<stateVar>(tSeconds)` (e.g. `phys_th1(t*d)`).
+   *
+   * Kept separate from `scene.objects` because these nodes are not renderable —
+   * they produce data, not pixels. Processing order is: systems first, then scene.
+   */
+  systems?: OdeSystem[];
   scene: Scene;
 }
 
@@ -31,7 +42,7 @@ export interface Meta {
 
 export interface Scene {
   id: string;
-  objects: SceneNode[];
+  objects: SceneObject[];
 }
 
 // ─── Shared fields ────────────────────────────────────────────────────────────
@@ -155,6 +166,27 @@ export interface Circle {
 }
 
 /**
+ * A single event that fires when a condition crosses zero during ODE integration.
+ *
+ * The solver monitors `condition` for sign changes after each RK4 step.
+ * When one is detected in the specified direction, the solver bisects to find
+ * the crossing time, then evaluates each entry in `mutations` and writes the
+ * results back into the state — all from the pre-mutation state, so swaps
+ * (e.g. elastic collision velocity exchange) are computed correctly.
+ *
+ * Mutation expressions have access to: current state variables, the system's
+ * `params`, and the spec's global `variables`.
+ */
+export interface EventDef {
+  /** Expression monitored for zero-crossings. Positive → negative is "falling". */
+  condition: string;
+  /** Which crossing direction triggers the event. */
+  direction: "rising" | "falling" | "either";
+  /** State variable mutations applied simultaneously at the event point. */
+  mutations: Record<string, string>;
+}
+
+/**
  * A non-renderable physics simulation node.
  *
  * The renderer integrates the system numerically (RK4) before playback,
@@ -177,8 +209,13 @@ export interface OdeSystem {
   state: Record<string, number>;
   /** Derivative expressions: variable name → expression for d(var)/dt. */
   derivatives: Record<string, string>;
-  /** Named constants available in derivative expressions. */
+  /** Named constants available in derivative and event expressions. */
   params?: Params;
+  /**
+   * Zero-crossing events. Each event fires when its condition changes sign
+   * in the specified direction, applying state mutations at that instant.
+   */
+  events?: EventDef[];
   /** Numerical solver. Default: "rk4". */
   solver?: "rk4";
   /** Integration step size in seconds. Smaller = more accurate. Default: 0.001. */
@@ -189,6 +226,3 @@ export interface OdeSystem {
 
 /** A visual primitive — the things that actually get drawn. */
 export type SceneObject = ParametricPath | Line | Circle;
-
-/** Any node that can appear in scene.objects, including non-renderable systems. */
-export type SceneNode = SceneObject | OdeSystem;

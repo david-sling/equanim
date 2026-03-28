@@ -18,7 +18,219 @@ export interface OdeRef {
   duration: number;
 }
 
-// ─── Integration ──────────────────────────────────────────────────────────────
+// ─── Internal compiled types ──────────────────────────────────────────────────
+
+interface CompiledDeriv {
+  varName: string;
+  fn: math.EvalFunction;
+}
+
+interface CompiledMutation {
+  varName: string;
+  fn: math.EvalFunction;
+}
+
+interface CompiledEvent {
+  condition: math.EvalFunction;
+  direction: "rising" | "falling" | "either";
+  mutations: CompiledMutation[];
+}
+
+interface CompiledSystem {
+  derivs: CompiledDeriv[];
+  events: CompiledEvent[];
+  /** Merged params + vars — injected into every expression scope. */
+  baseScope: Record<string, unknown>;
+  stateVarNames: string[];
+}
+
+// ─── Internal helpers ─────────────────────────────────────────────────────────
+
+/**
+ * Compile all derivative and event expressions for a system once.
+ * The result is passed to `runRK4Loop` for the actual integration.
+ */
+function compileSystem(system: OdeSystem, vars: VarValues): CompiledSystem {
+  const params: Params = system.params ?? {};
+  const baseScope: Record<string, unknown> = { ...params, ...vars };
+  const stateVarNames = Object.keys(system.state);
+
+  const derivs: CompiledDeriv[] = Object.entries(system.derivatives).map(
+    ([varName, expr]) => ({ varName, fn: math.compile(expr) }),
+  );
+
+  const events: CompiledEvent[] = (system.events ?? []).map((evt) => ({
+    condition: math.compile(evt.condition),
+    direction: evt.direction,
+    mutations: Object.entries(evt.mutations).map(([varName, expr]) => ({
+      varName,
+      fn: math.compile(expr),
+    })),
+  }));
+
+  return { derivs, events, baseScope, stateVarNames };
+}
+
+/** Evaluate all derivative expressions at the given state. */
+function evalDerivs(
+  compiled: CompiledSystem,
+  state: Record<string, number>,
+): Record<string, number> {
+  const scope = { ...compiled.baseScope, ...state };
+  const result: Record<string, number> = {};
+  for (const { varName, fn } of compiled.derivs) {
+    result[varName] = fn.evaluate(scope) as number;
+  }
+  return result;
+}
+
+/** Advance state by one RK4 step of size h. Returns a new state object. */
+function rk4Step(
+  compiled: CompiledSystem,
+  state: Record<string, number>,
+  h: number,
+): Record<string, number> {
+  const { stateVarNames } = compiled;
+
+  const k1 = evalDerivs(compiled, state);
+
+  const s2: Record<string, number> = {};
+  for (const v of stateVarNames) s2[v] = state[v]! + 0.5 * h * (k1[v] ?? 0);
+  const k2 = evalDerivs(compiled, s2);
+
+  const s3: Record<string, number> = {};
+  for (const v of stateVarNames) s3[v] = state[v]! + 0.5 * h * (k2[v] ?? 0);
+  const k3 = evalDerivs(compiled, s3);
+
+  const s4: Record<string, number> = {};
+  for (const v of stateVarNames) s4[v] = state[v]! + h * (k3[v] ?? 0);
+  const k4 = evalDerivs(compiled, s4);
+
+  const next: Record<string, number> = {};
+  for (const v of stateVarNames) {
+    next[v] =
+      state[v]! +
+      (h / 6) *
+        ((k1[v] ?? 0) + 2 * (k2[v] ?? 0) + 2 * (k3[v] ?? 0) + (k4[v] ?? 0));
+  }
+  return next;
+}
+
+/** Evaluate a compiled event condition expression. */
+function evalCondition(
+  condition: math.EvalFunction,
+  baseScope: Record<string, unknown>,
+  state: Record<string, number>,
+): number {
+  return condition.evaluate({ ...baseScope, ...state }) as number;
+}
+
+/**
+ * Apply all mutations simultaneously from the pre-mutation state.
+ * All new values are computed first, then written back — this ensures
+ * swaps (e.g. elastic velocity exchange) evaluate correctly.
+ */
+function applyMutations(
+  mutations: CompiledMutation[],
+  baseScope: Record<string, unknown>,
+  state: Record<string, number>,
+): void {
+  const scope = { ...baseScope, ...state };
+  const newValues: Record<string, number> = {};
+  for (const { varName, fn } of mutations) {
+    newValues[varName] = fn.evaluate(scope) as number;
+  }
+  Object.assign(state, newValues);
+}
+
+/** Return true if the condition crossed zero in the specified direction. */
+function eventFires(
+  direction: "rising" | "falling" | "either",
+  before: number,
+  after: number,
+): boolean {
+  if (direction === "falling") return before > 0 && after <= 0;
+  if (direction === "rising") return before < 0 && after >= 0;
+  return (before > 0 && after <= 0) || (before < 0 && after >= 0);
+}
+
+/**
+ * Core RK4 integration loop with event detection.
+ *
+ * Writes trajectory data into `ref` starting from index `startIdx + 1`.
+ * On each step, scans all compiled events for zero-crossings. When one is
+ * found, the crossing time is located via linear interpolation, the solver
+ * integrates to that point, applies the mutations, then continues to the
+ * end of the step. At most one event fires per step.
+ */
+function runRK4Loop(
+  compiled: CompiledSystem,
+  state: Record<string, number>,
+  startIdx: number,
+  ref: OdeRef,
+  duration: number,
+): void {
+  const { events, stateVarNames, baseScope } = compiled;
+  const { step, nSteps } = ref;
+
+  for (let i = startIdx + 1; i < nSteps; i++) {
+    const h = Math.min(step, duration - (i - 1) * step);
+    if (h <= 0) break;
+
+    // Snapshot state and condition signs before the step
+    const stateBefore = { ...state };
+    const condsBefore = events.map((evt) =>
+      evalCondition(evt.condition, baseScope, state),
+    );
+
+    // Full RK4 step
+    const stateAfter = rk4Step(compiled, state, h);
+
+    // Check for zero-crossings
+    let fired = false;
+    for (let ei = 0; ei < events.length; ei++) {
+      const evt = events[ei]!;
+      const condBefore = condsBefore[ei]!;
+      const condAfter = evalCondition(evt.condition, baseScope, stateAfter);
+
+      if (eventFires(evt.direction, condBefore, condAfter)) {
+        // Linear interpolation: fraction of h at which the crossing occurs
+        const denom = condBefore - condAfter;
+        const frac = denom !== 0 ? Math.max(0, Math.min(1, condBefore / denom)) : 0.5;
+        const hEvent = frac * h;
+        const hRemain = h - hEvent;
+
+        // Integrate from stateBefore to the event point
+        const stateEvent = hEvent > 0
+          ? rk4Step(compiled, stateBefore, hEvent)
+          : { ...stateBefore };
+
+        // Apply all mutations simultaneously from the event state
+        applyMutations(evt.mutations, baseScope, stateEvent);
+
+        // Continue from the event point to the end of the step
+        Object.assign(
+          state,
+          hRemain > 0 ? rk4Step(compiled, stateEvent, hRemain) : stateEvent,
+        );
+
+        fired = true;
+        break; // at most one event per step
+      }
+    }
+
+    if (!fired) {
+      Object.assign(state, stateAfter);
+    }
+
+    // Store final state at index i
+    for (const v of stateVarNames) {
+      ref.trajectories[v]![i] = state[v]!;
+    }
+  }
+}
+
+// ─── Public API ───────────────────────────────────────────────────────────────
 
 /**
  * Run RK4 integration and write results into an existing OdeRef.
@@ -26,14 +238,10 @@ export interface OdeRef {
  * Always allocates fresh Float64Arrays so interpolators that read
  * `ref.trajectories[v]` dynamically pick up the new data.
  *
- * The derivative expressions are compiled here on each call (cheap — four
- * math.compile calls), so this function is self-contained and re-callable
- * whenever variable values change.
- *
- * Scope available inside derivative expressions:
- *   - all current state variable values (e.g. th1, w1, th2, w2)
+ * Scope available inside derivative, event condition, and mutation expressions:
+ *   - all current state variable values
  *   - params from the OdeSystem's own params block
- *   - vars (runtime spec variables, e.g. g, m1, m2, L1, L2)
+ *   - vars (runtime spec variables)
  */
 export function integrateInto(
   system: OdeSystem,
@@ -42,11 +250,9 @@ export function integrateInto(
   ref: OdeRef,
 ): void {
   const step = system.step ?? 0.001;
-  const params: Params = system.params ?? {};
   const stateVarNames = Object.keys(system.state);
   const nSteps = Math.ceil(duration / step) + 1;
 
-  // Allocate fresh trajectory arrays
   ref.step = step;
   ref.nSteps = nSteps;
   ref.duration = duration;
@@ -55,52 +261,15 @@ export function integrateInto(
     ref.trajectories[v] = new Float64Array(nSteps);
   }
 
-  // Compile derivative expressions once per integration run
-  const compiledDerivs = Object.entries(system.derivatives).map(
-    ([varName, expr]) => ({ varName, compiled: math.compile(expr) }),
-  );
-
-  // Evaluate all derivatives at a given state
-  function evalDerivs(s: Record<string, number>): Record<string, number> {
-    const scope: Record<string, unknown> = { ...params, ...vars, ...s };
-    const result: Record<string, number> = {};
-    for (const { varName, compiled } of compiledDerivs) {
-      result[varName] = compiled.evaluate(scope) as number;
-    }
-    return result;
-  }
-
-  // Initial state
+  const compiled = compileSystem(system, vars);
   const state: Record<string, number> = { ...system.state };
+
+  // Write initial conditions at index 0
   for (const v of stateVarNames) {
     ref.trajectories[v]![0] = state[v]!;
   }
 
-  // RK4 loop
-  for (let i = 1; i < nSteps; i++) {
-    const h = Math.min(step, duration - (i - 1) * step);
-    if (h <= 0) break;
-
-    const k1 = evalDerivs(state);
-
-    const s2: Record<string, number> = {};
-    for (const v of stateVarNames) s2[v] = state[v]! + 0.5 * h * k1[v]!;
-    const k2 = evalDerivs(s2);
-
-    const s3: Record<string, number> = {};
-    for (const v of stateVarNames) s3[v] = state[v]! + 0.5 * h * k2[v]!;
-    const k3 = evalDerivs(s3);
-
-    const s4: Record<string, number> = {};
-    for (const v of stateVarNames) s4[v] = state[v]! + h * k3[v]!;
-    const k4 = evalDerivs(s4);
-
-    for (const v of stateVarNames) {
-      state[v] =
-        state[v]! + (h / 6) * (k1[v]! + 2 * k2[v]! + 2 * k3[v]! + k4[v]!);
-      ref.trajectories[v]![i] = state[v]!;
-    }
-  }
+  runRK4Loop(compiled, state, 0, ref, duration);
 }
 
 /**
@@ -116,9 +285,9 @@ export function integrateInto(
  *
  * Falls back to a full `integrateInto` when tStart ≤ 0.
  *
- * @param system      - The OdeSystem spec node (derivatives, params, step)
+ * @param system      - The OdeSystem spec node
  * @param tStart      - Absolute time in seconds to branch from
- * @param startState  - State variable values at tStart (e.g. sampled from existing trajectory)
+ * @param startState  - State variable values at tStart
  * @param duration    - Total animation duration in seconds
  * @param vars        - New runtime variable values to use from tStart onward
  * @param ref         - Mutable trajectory ref; updated in place from tStart onward
@@ -140,54 +309,15 @@ export function integrateFromInto(
   }
 
   const clampedIdx = Math.min(startIdx, ref.nSteps - 1);
-  const params: Params = system.params ?? {};
-  const stateVarNames = Object.keys(system.state);
-
-  // Compile derivative expressions
-  const compiledDerivs = Object.entries(system.derivatives).map(
-    ([varName, expr]) => ({ varName, compiled: math.compile(expr) }),
-  );
-
-  function evalDerivs(s: Record<string, number>): Record<string, number> {
-    const scope: Record<string, unknown> = { ...params, ...vars, ...s };
-    const result: Record<string, number> = {};
-    for (const { varName, compiled } of compiledDerivs) {
-      result[varName] = compiled.evaluate(scope) as number;
-    }
-    return result;
-  }
+  const compiled = compileSystem(system, vars);
+  const state: Record<string, number> = { ...startState };
 
   // Write start state at the branch point
-  const state: Record<string, number> = { ...startState };
-  for (const v of stateVarNames) {
+  for (const v of Object.keys(system.state)) {
     ref.trajectories[v]![clampedIdx] = state[v]!;
   }
 
-  // RK4 forward from clampedIdx
-  for (let i = clampedIdx + 1; i < ref.nSteps; i++) {
-    const h = Math.min(step, duration - (i - 1) * step);
-    if (h <= 0) break;
-
-    const k1 = evalDerivs(state);
-
-    const s2: Record<string, number> = {};
-    for (const v of stateVarNames) s2[v] = state[v]! + 0.5 * h * k1[v]!;
-    const k2 = evalDerivs(s2);
-
-    const s3: Record<string, number> = {};
-    for (const v of stateVarNames) s3[v] = state[v]! + 0.5 * h * k2[v]!;
-    const k3 = evalDerivs(s3);
-
-    const s4: Record<string, number> = {};
-    for (const v of stateVarNames) s4[v] = state[v]! + h * k3[v]!;
-    const k4 = evalDerivs(s4);
-
-    for (const v of stateVarNames) {
-      state[v] =
-        state[v]! + (h / 6) * (k1[v]! + 2 * k2[v]! + 2 * k3[v]! + k4[v]!);
-      ref.trajectories[v]![i] = state[v]!;
-    }
-  }
+  runRK4Loop(compiled, state, clampedIdx, ref, duration);
 }
 
 /**
@@ -210,7 +340,6 @@ export function createOdeRef(
     nSteps,
     duration,
   };
-  // Allocate placeholder arrays before integrateInto replaces them
   for (const v of Object.keys(system.state)) {
     ref.trajectories[v] = new Float64Array(nSteps);
   }
