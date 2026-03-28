@@ -1,6 +1,6 @@
 # Equanim v0.1
 
-A declarative, JSON-based animation specification. Every visual property is a math expression evaluated at runtime. Four time/duration variables are always available in every expression: `t` (local 0→1), `d` (local seconds), `root_t` (global 0→1), and `root_d` (total seconds). Specs are designed to be AI-generatable, renderer-agnostic, and human-readable.
+A declarative, JSON-based animation specification. Every visual property is a math expression string evaluated at runtime. The spec is designed to be AI-generatable, renderer-agnostic, and human-readable.
 
 ![Double Pendulum](renderer/assets/double-pendulum.gif)
 
@@ -18,33 +18,47 @@ A declarative, JSON-based animation specification. Every visual property is a ma
 }
 ```
 
-| Field       | Required | Description                                                    |
-| ----------- | -------- | -------------------------------------------------------------- |
-| `spec`      | yes      | Always `"equanim/0.1"`                                         |
-| `meta`      | yes      | Canvas dimensions, fps, duration, coordinate system            |
-| `variables` | no       | User-controllable runtime parameters                           |
-| `systems`   | no       | Physics simulation systems (ODE). Processed before rendering.  |
-| `scene`     | yes      | Visual objects to draw                                         |
+| Field       | Required | Description                                                   |
+| ----------- | -------- | ------------------------------------------------------------- |
+| `spec`      | yes      | Always `"equanim/0.1"`                                        |
+| `meta`      | yes      | Canvas dimensions, fps, duration, coordinate system           |
+| `variables` | no       | User-controllable runtime parameters (sliders)                |
+| `systems`   | no       | Physics simulation systems. Processed before rendering.       |
+| `scene`     | yes      | Visual objects to draw                                        |
 
 ---
 
 ## `meta` block
 
-| Field               | Type   | Description                       |
-| ------------------- | ------ | --------------------------------- |
-| `title`             | string | Human-readable name               |
-| `duration`          | number | Total animation length in seconds |
-| `width`             | number | Output width in px                |
-| `height`            | number | Output height in px               |
-| `fps`               | number | Frames per second                 |
-| `coordinate_system` | string | Always `"cartesian"` for now      |
-| `origin`            | string | `"center"` or `"top-left"`        |
+```json
+"meta": {
+  "title": "My Animation",
+  "duration": 10.0,
+  "width": 800,
+  "height": 600,
+  "fps": 60,
+  "coordinate_system": "cartesian",
+  "origin": "center"
+}
+```
+
+| Field               | Type   | Description                                     |
+| ------------------- | ------ | ----------------------------------------------- |
+| `title`             | string | Human-readable name                             |
+| `duration`          | number | Total animation length in seconds               |
+| `width`             | number | Output width in pixels                          |
+| `height`            | number | Output height in pixels                         |
+| `fps`               | number | Frames per second                               |
+| `coordinate_system` | string | Always `"cartesian"`                            |
+| `origin`            | string | `"center"` (default) or `"top-left"`            |
+
+With `origin: "center"`, (0, 0) is the canvas centre. With `origin: "top-left"`, (0, 0) is the top-left corner (no coordinate flip).
 
 ---
 
 ## `variables` block
 
-Optional. Defines named values that are exposed to the user as runtime controls (sliders, inputs, etc.). Variable values are injected into every object's expression scope, overriding same-named entries in a `params` block.
+Optional. Named numbers exposed as runtime controls. Variable values are available in every expression scope, overriding same-named entries in a `params` block.
 
 ```json
 "variables": {
@@ -53,23 +67,27 @@ Optional. Defines named values that are exposed to the user as runtime controls 
 }
 ```
 
-| Field     | Type   | Required | Description                                         |
-| --------- | ------ | -------- | --------------------------------------------------- |
-| `label`   | string | no       | Human-readable control label. Defaults to key name. |
-| `default` | number | yes      | Initial value                                       |
-| `min`     | number | yes      | Slider minimum                                      |
-| `max`     | number | yes      | Slider maximum                                      |
-| `step`    | number | no       | Slider step. Defaults to `(max - min) / 100`        |
-
-Variables are intentionally format-agnostic — a consumer can render them as sliders, number inputs, dropdowns, or anything else.
+| Field     | Type   | Required | Description                                          |
+| --------- | ------ | -------- | ---------------------------------------------------- |
+| `label`   | string | no       | Human-readable control label. Defaults to key name.  |
+| `default` | number | yes      | Initial value                                        |
+| `min`     | number | yes      | Minimum value                                        |
+| `max`     | number | yes      | Maximum value                                        |
+| `step`    | number | no       | Increment. Defaults to `(max - min) / 100`           |
 
 ---
 
 ## `systems` block
 
-Optional. Defines physics simulation systems that are integrated numerically before playback begins. Systems are non-renderable — they produce trajectory data, not pixels.
+Optional. Defines physics simulation systems integrated numerically before playback begins. Systems are non-renderable — they produce trajectory data, not pixels.
 
 Each system's state variables are exposed as callable interpolation functions in every scene object's expression scope, using the naming convention `<id>_<var>(t_seconds)`.
+
+**The argument to the interpolator is always in seconds.** Use `phys_y(t * d)` or `phys_y(root_t * root_d)`, never `phys_y(t)`.
+
+### `ode_system`
+
+Integrates a system of first-order ODEs over the full animation duration.
 
 ```json
 "systems": [
@@ -77,7 +95,11 @@ Each system's state variables are exposed as callable interpolation functions in
     "id": "phys",
     "type": "ode_system",
     "state": { "y": 180.0, "vy": 0.0 },
-    "derivatives": { "y": "vy", "vy": "-g" },
+    "params": { "g": 980.0 },
+    "derivatives": {
+      "y":  "vy",
+      "vy": "-g"
+    },
     "events": [
       {
         "condition": "y - floor_y",
@@ -91,26 +113,22 @@ Each system's state variables are exposed as callable interpolation functions in
 ]
 ```
 
-### `ode_system`
-
-Integrates a system of first-order ODEs (RK4) over the full animation duration. State variables become interpolators available in all scene objects.
-
 | Field         | Required | Description                                                              |
 | ------------- | -------- | ------------------------------------------------------------------------ |
-| `id`          | yes      | Identifier. State vars are exposed as `<id>_<var>(t_seconds)`.           |
+| `id`          | yes      | Identifier. State vars exposed as `<id>_<var>(seconds)` in scene scope. |
 | `type`        | yes      | Always `"ode_system"`                                                    |
 | `state`       | yes      | Initial conditions: `{ varName: initialValue }`                          |
 | `derivatives` | yes      | RHS expressions: `{ varName: "expression for d(var)/dt" }`              |
-| `params`      | no       | Named constants in scope for derivative and event expressions            |
+| `params`      | no       | Named number constants scoped to this system                             |
 | `events`      | no       | Zero-crossing event triggers (see below)                                 |
-| `solver`      | no       | Numerical method. Default: `"rk4"`                                       |
-| `step`        | no       | Integration step in seconds. Smaller = more accurate. Default: `0.001`  |
+| `solver`      | no       | Numerical method. Default and only current option: `"rk4"`              |
+| `step`        | no       | Integration timestep in seconds. Smaller = more accurate. Default: `0.001` |
 
-**Derivative expressions** have access to: all current state variable values, the system's `params`, and all spec `variables`.
+Derivative expressions have access to: all current state variable values, the system's `params`, and all spec `variables`.
 
 ### Events
 
-Zero-crossing events fire when a condition expression changes sign. At the crossing instant, state mutations are applied simultaneously (all evaluated from the pre-mutation state, so velocity swaps in elastic collisions are computed correctly).
+Zero-crossing events fire when a `condition` expression changes sign during integration. At the crossing instant, `mutations` are applied simultaneously — all evaluated from the pre-mutation state. This makes velocity swaps in elastic collisions work correctly.
 
 ```json
 "events": [
@@ -122,13 +140,15 @@ Zero-crossing events fire when a condition expression changes sign. At the cross
 ]
 ```
 
-| Field       | Description                                                               |
-| ----------- | ------------------------------------------------------------------------- |
-| `condition` | Expression monitored for zero-crossings. Uses same scope as derivatives.  |
-| `direction` | `"rising"` (neg→pos), `"falling"` (pos→neg), or `"either"`               |
-| `mutations` | State mutations applied at the crossing: `{ varName: "expression" }`     |
+| Field       | Description                                                              |
+| ----------- | ------------------------------------------------------------------------ |
+| `condition` | Expression evaluated at each step. Event fires when it crosses zero.     |
+| `direction` | `"rising"` (negative → positive), `"falling"` (positive → negative), or `"either"` |
+| `mutations` | State assignments applied at the crossing: `{ varName: "expression" }`  |
 
-Multiple systems are allowed. Each runs independently; they cannot reference each other's state directly.
+Mutation expressions have access to the same scope as derivatives. At most one event fires per integration step. Multiple events are checked in order; the first matching one wins.
+
+Multiple systems are allowed. Each runs independently; systems cannot reference each other's state.
 
 ---
 
@@ -141,7 +161,7 @@ Multiple systems are allowed. Each runs independently; they cannot reference eac
 }
 ```
 
-Scenes can be nested. Speed scaling via a `speed` multiplier (e.g. `0.8`, `1.5`) is planned.
+`id` is conventionally `"root"` for the top-level scene. Objects are drawn in array order (later objects appear on top).
 
 ---
 
@@ -149,18 +169,29 @@ Scenes can be nested. Speed scaling via a `speed` multiplier (e.g. `0.8`, `1.5`)
 
 ### Shared fields
 
-All primitives share these fields:
+All primitives share:
 
-| Field       | Type   | Description                                                                        |
-| ----------- | ------ | ---------------------------------------------------------------------------------- |
-| `id`        | string | Unique identifier within the scene                                                 |
-| `type`      | string | Primitive type name                                                                |
-| `style`     | object | Visual style (see below)                                                           |
-| `params`    | object | Named number constants scoped to this object                                       |
-| `functions` | object | Named sub-expressions (see below)                                                  |
-| `timeline`  | object | `{ "start": number, "end": number }` — fractions of total duration, both in [0, 1] |
+| Field       | Type   | Required | Description                                                              |
+| ----------- | ------ | -------- | ------------------------------------------------------------------------ |
+| `id`        | string | yes      | Unique identifier within the spec                                        |
+| `type`      | string | yes      | Primitive type: `"circle"`, `"line"`, `"parametric_path"`               |
+| `style`     | object | no       | Visual style (stroke, fill, stroke_width)                                |
+| `params`    | object | no       | Named number constants scoped to this object                             |
+| `functions` | object | no       | Named sub-expressions callable from equations                            |
+| `equations` | object | yes      | Math expression strings defining the primitive's geometry each frame     |
+| `timeline`  | object | no       | Visibility window. Default: `{ "start": 0, "end": 1 }`                  |
 
-**Timeline** values are normalised fractions of `meta.duration`, not absolute seconds. This keeps specs portable across different durations and makes relative timing relationships obvious at a glance.
+**All equation values must be strings**, even constants. Write `"cx": "0"`, not `"cx": 0`.
+
+**Style fields:**
+
+| Field          | Type   | Description            |
+| -------------- | ------ | ---------------------- |
+| `stroke`       | string | CSS color string       |
+| `stroke_width` | number | Line width in pixels   |
+| `fill`         | string | CSS color or `"none"`  |
+
+**Timeline:** Fractions of `meta.duration`. Both values are in [0, 1].
 
 | Value | Meaning         |
 | ----- | --------------- |
@@ -169,112 +200,98 @@ All primitives share these fields:
 | `0.5` | Halfway point   |
 
 Examples for a 4-second animation:
-
 - `{ "start": 0, "end": 1 }` → visible the whole time (0–4s)
 - `{ "start": 0, "end": 0.5 }` → first half only (0–2s)
 - `{ "start": 0.25, "end": 0.75 }` → middle half (1–3s)
 
-**Style fields:**
-
-| Field          | Type   | Description           |
-| -------------- | ------ | --------------------- |
-| `stroke`       | string | CSS color string      |
-| `stroke_width` | number | Line width in px      |
-| `fill`         | string | CSS color or `"none"` |
+When `timeline` is `{ "start": 0, "end": 1 }`, `t` equals `root_t` and `d` equals `root_d`.
 
 ---
 
-### `parametric_path`
+### `circle`
 
-A path where every point is computed from equations. The spatial parameter `s` sweeps across a domain and `x(s,t,...)` / `y(s,t,...)` define where each point lands at a given time.
+Required equation keys: `cx`, `cy`, `r`
 
 ```json
 {
-  "id": "wave",
-  "type": "parametric_path",
-  "style": {
-    "stroke": "#44aaff",
-    "stroke_width": 2.5,
-    "fill": "none"
-  },
-  "domain": {
-    "s": [-500, 500],
-    "samples": 800
-  },
+  "id": "ball",
+  "type": "circle",
+  "style": { "fill": "#ff6644", "stroke": "#ff9977", "stroke_width": 2 },
   "equations": {
-    "x": "s",
-    "y": "A(t) * E(s, t) * sin(k * s - omega * t)"
-  },
-  "functions": {
-    "A": { "args": ["t"], "body": "amplitude * exp(-decay * t)" },
-    "E": { "args": ["s", "t"], "body": "clamp(omega * t - abs(k * s), 0, 1)" }
+    "cx": "0",
+    "cy": "amplitude * sin(2 * pi * t)",
+    "r":  "20"
   },
   "timeline": { "start": 0.0, "end": 1.0 }
 }
 ```
 
-**Rendering logic:**
-
-1. For each frame at global time `T`, iterate `s` from `domain.s[0]` to `domain.s[1]` in `samples` steps
-2. Evaluate `x(s, t, ...)` and `y(s, t, ...)` for each step (all four time/duration variables are in scope)
-3. Draw a polyline through all resulting points
+`cx` and `cy` are in spec coordinates and go through the coordinate transform. `r` is a scalar radius in spec units — not y-flipped.
 
 ---
 
 ### `line`
 
-A static or animated straight line defined by two endpoints.
+Required equation keys: `x1`, `y1`, `x2`, `y2`
 
 ```json
 {
   "id": "baseline",
   "type": "line",
-  "style": {
-    "stroke": "#ffffff22",
-    "stroke_width": 1
-  },
+  "style": { "stroke": "#ffffff44", "stroke_width": 1 },
   "equations": {
-    "x1": "-500",
+    "x1": "-400",
     "y1": "0",
-    "x2": "500",
+    "x2": "400",
     "y2": "0"
   },
   "timeline": { "start": 0.0, "end": 1.0 }
 }
 ```
 
-Any equation value can be a constant (`"0"`) or a time-varying expression (`"100 * sin(t * pi)"` for a portable single-cycle sweep, `"100 * sin(root_t * 2 * pi)"` to sync to the full animation).
+Any equation can be a constant string (`"0"`) or a time-varying expression.
 
 ---
 
-### `circle`
+### `parametric_path`
 
-A filled or stroked circle defined by its centre and radius as equations.
+Required equation keys: `x`, `y`. Required extra field: `domain`.
+
+A curve where each point is computed by sweeping the spatial parameter `s` across a range.
 
 ```json
 {
-  "id": "ball",
-  "type": "circle",
-  "style": {
-    "fill": "#ff6644",
-    "stroke": "#ff9977",
-    "stroke_width": 2
-  },
+  "id": "wave",
+  "type": "parametric_path",
+  "style": { "stroke": "#44aaff", "stroke_width": 2.5, "fill": "none" },
+  "domain": { "s": [-400, 400], "samples": 800 },
+  "params": { "k": 0.02, "omega": 4.0 },
   "equations": {
-    "cx": "0",
-    "cy": "-190 + radius + B(t * d)",
-    "r": "radius"
-  },
-  "functions": {
-    "p": { "args": ["ts"], "body": "(ts / sqrt(2 * h0 / g)) % 1" },
-    "H": { "args": ["ts"], "body": "h0 * exp(-decay * ts)" },
-    "B": { "args": ["ts"], "body": "H(ts) * 4 * p(ts) * (1 - p(ts))" }
+    "x": "s",
+    "y": "amplitude * sin(k * s - omega * t * d)"
   },
   "timeline": { "start": 0.0, "end": 1.0 }
 }
 ```
 
-`cx` and `cy` are in spec space and go through the standard coordinate transform. `r` is a scalar magnitude in spec units — it is not y-flipped. Negative values are treated as their absolute value.
+| Field     | Description                                                  |
+| --------- | ------------------------------------------------------------ |
+| `domain.s`| `[min, max]` — range of values `s` is swept across           |
+| `samples` | Number of points computed and connected into a polyline      |
+
+`s` is available only in `parametric_path` equations. At each frame, `s` steps linearly from `domain.s[0]` to `domain.s[1]` in `samples` steps, and the resulting (x, y) points are connected into a polyline.
+
+**Progressive reveal pattern:** To draw a path that traces out over time (revealing history as the animation plays), use `s` as normalised time in [0, 1] and clamp it to the current playback position:
+
+```json
+"domain": { "s": [0, 1], "samples": 1000 },
+"equations": {
+  "x": "some_x_fn(clamp(s, 0, root_t) * root_d)",
+  "y": "some_y_fn(clamp(s, 0, root_t) * root_d)"
+}
+```
+
+This works because `s` sweeps [0, 1] while `root_t` is the current playback fraction — so points beyond the current time are clamped to the last known position, effectively hiding future trajectory.
 
 ---
 
@@ -288,97 +305,106 @@ A filled or stroked circle defined by its centre and radius as equations.
 
 ## Expression syntax
 
-Equations are math expression strings evaluated at runtime using [mathjs](https://mathjs.org/).
+All equation values, function bodies, derivative expressions, event conditions, and mutation expressions are **math expression strings** evaluated by [mathjs](https://mathjs.org/).
 
-### Variables in scope
+### ID and name rules
 
-Four time/duration variables are always available. They come in two pairs — local (relative to the object's own window) and global (relative to the full animation):
+Object `id` values, system `id` values, `params` keys, `variables` keys, and `functions` keys must all be valid identifiers: letters, digits, and underscores only; no hyphens; cannot start with a digit. This is because they are injected into expression scope as named variables.
 
-| Name     | Value range | Description                                               |
-| -------- | ----------- | --------------------------------------------------------- |
-| `t`      | 0 → 1       | Local normalised time over the object's own timeline window. `t=0` when the object enters; `t=1` when it exits. Default choice for portable animations. |
-| `d`      | seconds     | Local duration — length of the object's own window in seconds. Multiply to convert: `t * d` = local seconds elapsed since the object started. |
-| `root_t` | 0 → 1       | Global normalised time over the full animation (`T / meta.duration`). Use to sync effects across objects regardless of their individual windows. |
-| `root_d` | seconds     | Total animation duration in seconds (`meta.duration`). Multiply to convert: `root_t * root_d` = global seconds elapsed. |
+### Variables in scope (scene objects)
 
-**When to use each:**
+| Name              | Value range | Description                                                   |
+| ----------------- | ----------- | ------------------------------------------------------------- |
+| `t`               | 0 → 1       | Normalised time over this object's own timeline window        |
+| `d`               | seconds     | Duration of this object's timeline window in seconds          |
+| `root_t`          | 0 → 1       | Normalised time over the full animation                       |
+| `root_d`          | seconds     | Total animation duration (`meta.duration`)                    |
+| `s`               | varies      | Spatial parameter — `parametric_path` only                    |
+| _(params keys)_   | number      | Constants from this object's `params` block                   |
+| _(variables keys)_| number      | Spec-level variables (override same-named params)             |
+| `<id>_<var>(...)`  | function   | ODE interpolator — callable with a time in **seconds**        |
 
-- `t` — default. Fade, ease, sweep — anything that should complete within the object's own window.
-- `d` — when you need real seconds locally (e.g. a decay rate in units of per-second: `exp(-k * t * d)`).
-- `root_t` — when multiple objects need to stay in sync with the whole animation regardless of their individual windows.
-- `root_d` — when combining with `root_t` to express global durations, or for expressions that scale with total animation length.
+`t * d` = local seconds elapsed since the object's window started.
+`root_t * root_d` = global seconds elapsed.
 
-**Future group scoping:** When groups are introduced, each group will expose its own `<group_id>_t` and `<group_id>_d` to its children, following the same pattern. Object and group IDs must therefore be valid identifiers: letters, digits, and underscores only; no hyphens; cannot start with a digit.
-
-| Name       | Available in      | Description                                              |
-| ---------- | ----------------- | -------------------------------------------------------- |
-| `t`        | all equations     | Local normalised time 0→1 over this object's window      |
-| `d`        | all equations     | Local duration in seconds                                |
-| `root_t`   | all equations     | Global normalised time 0→1 over the full animation       |
-| `root_d`   | all equations     | Total animation duration in seconds                      |
-| `s`        | `parametric_path` | Spatial parameter swept across `domain.s`                |
-| _(params)_ | all equations     | Keys from the object's `params` block                    |
-| _(vars)_   | all equations     | Keys from the spec's `variables` block (override params) |
+**Calling ODE interpolators:** Always pass seconds. Use `phys_y(t * d)` or `phys_y(root_t * root_d)`. Writing `phys_y(t)` is a common mistake — `t` is 0→1, not seconds.
 
 ### Math builtins
 
-| Function             | Description                 |
-| -------------------- | --------------------------- |
-| `sin(x)`             | Sine                        |
-| `cos(x)`             | Cosine                      |
-| `exp(x)`             | e^x                         |
-| `abs(x)`             | Absolute value              |
-| `clamp(x, min, max)` | Clamp x between min and max |
-| `sqrt(x)`            | Square root                 |
-| `pow(x, n)`          | x to the power n            |
-| `pi`                 | 3.14159...                  |
+| Function / Constant  | Description                          |
+| -------------------- | ------------------------------------ |
+| `sin(x)`             | Sine (radians)                       |
+| `cos(x)`             | Cosine (radians)                     |
+| `tan(x)`             | Tangent (radians)                    |
+| `asin(x)`            | Arcsine                              |
+| `acos(x)`            | Arccosine                            |
+| `atan(x)`            | Arctangent                           |
+| `atan2(y, x)`        | Two-argument arctangent              |
+| `exp(x)`             | e^x                                  |
+| `log(x)`             | Natural logarithm                    |
+| `log(x, base)`       | Logarithm with specified base        |
+| `sqrt(x)`            | Square root                          |
+| `abs(x)`             | Absolute value                       |
+| `pow(x, n)`          | x to the power n (also: `x^n`)       |
+| `floor(x)`           | Round down to integer                |
+| `ceil(x)`            | Round up to integer                  |
+| `round(x)`           | Round to nearest integer             |
+| `mod(x, y)`          | Modulo (also: `x % y`)               |
+| `min(a, b)`          | Minimum of two values                |
+| `max(a, b)`          | Maximum of two values                |
+| `clamp(x, lo, hi)`   | Clamp x to [lo, hi]                  |
+| `sign(x)`            | −1, 0, or 1                          |
+| `pi`                 | 3.14159…                             |
+| `e`                  | 2.71828…                             |
 
 ### `params` block
 
-Named number constants scoped to the object. Good for fixed values that don't need to be user-controllable.
+Named number constants scoped to the object (or system). Good for fixed values that keep equations readable.
 
 ```json
-"params": { "k": 0.018, "omega": 6.28 }
+"params": { "k": 0.018, "omega": 6.28, "radius": 20 }
 ```
 
 ### `functions` block
 
-Named sub-expressions that accept arguments. Evaluated inline when the parent equation references them.
+Named sub-expressions with arguments. Callable from any equation on the same object.
 
 ```json
 "functions": {
-  "A": { "args": ["t"],      "body": "amplitude * exp(-decay * t)" },
-  "E": { "args": ["s", "t"], "body": "clamp(omega * t - abs(k * s), 0, 1)" }
+  "A": { "args": ["ts"], "body": "amplitude * exp(-decay * ts)" },
+  "envelope": { "args": ["s", "ts"], "body": "clamp(omega * ts - abs(k * s), 0, 1)" }
 }
 ```
 
-Each function definition has:
+| Field  | Description                                                              |
+| ------ | ------------------------------------------------------------------------ |
+| `args` | Ordered argument names                                                   |
+| `body` | Expression string. Has access to all scope variables plus the named args |
 
-- `args` — ordered list of argument names (referenced positionally in call sites)
-- `body` — expression string; has access to all scope variables plus the named args
-
-> **Note on format:** Earlier drafts encoded the signature in the key (`"A(t)": "expr"`). This was dropped because it required regex-parsing keys and was ambiguous. The current `{ args, body }` format is explicit and unambiguous.
+Functions are local to the object. They cannot be shared across objects.
 
 ---
 
 ## Coordinate system
 
-Spec space is Cartesian (y-up). Canvas space is y-down. Renderers must transform:
+Spec space is Cartesian (y-up). Renderers transform to canvas space (y-down):
 
 ```
 canvas_x = width/2  + spec_x      (for origin="center")
 canvas_y = height/2 - spec_y      (y-flip)
 ```
 
-For `origin="top-left"`, no transform is applied.
+For `origin="top-left"`, no transform is applied — spec coordinates map directly to canvas coordinates.
+
+A canvas of 800×600 with `origin="center"` has spec space ranging from x: −400 to 400, y: −300 to 300, with (0, 0) at center.
 
 ---
 
 ## Hello world: Double Pendulum
 
-The canonical example. Real Lagrangian physics in a JSON file — no code, just ODEs and expressions. Live file: [`renderer/specs/double-pendulum.json`](renderer/specs/double-pendulum.json).
+Real Lagrangian physics in a JSON file — no code, just ODEs and expressions. Live file: [`renderer/specs/double-pendulum.json`](renderer/specs/double-pendulum.json).
 
-The physics system lives in `systems` — separate from the visual objects in `scene`. The `ode_system` integrates the equations of motion (RK4, step=0.005s) before playback. Each state variable is exposed as a callable interpolator — `phys_th1(t*d)`, `phys_th2(t*d)` — available in every scene object's expression scope.
+The physics lives in `systems`. The `ode_system` integrates the equations of motion (RK4, step=0.005s) over the full duration before playback. Each state variable — `th1`, `w1`, `th2`, `w2` — becomes a callable interpolator (`phys_th1(seconds)`, etc.) available in every scene object.
 
 ```json
 {
@@ -436,7 +462,8 @@ The physics system lives in `systems` — separate from the visual objects in `s
         "style": { "stroke": "#9999bb", "stroke_width": 2.5 },
         "params": { "y_off": 110 },
         "equations": {
-          "x1": "0", "y1": "y_off",
+          "x1": "0",
+          "y1": "y_off",
           "x2": "L1*ppm*sin(phys_th1(t*d))",
           "y2": "y_off - L1*ppm*cos(phys_th1(t*d))"
         },
@@ -452,6 +479,18 @@ The physics system lives in `systems` — separate from the visual objects in `s
           "y1": "y_off - L1*ppm*cos(phys_th1(t*d))",
           "x2": "L1*ppm*sin(phys_th1(t*d)) + L2*ppm*sin(phys_th2(t*d))",
           "y2": "y_off - L1*ppm*cos(phys_th1(t*d)) - L2*ppm*cos(phys_th2(t*d))"
+        },
+        "timeline": { "start": 0.0, "end": 1.0 }
+      },
+      {
+        "id": "bob1",
+        "type": "circle",
+        "style": { "fill": "#aaaacc", "stroke": "#ffffff33", "stroke_width": 1 },
+        "params": { "y_off": 110 },
+        "equations": {
+          "cx": "L1*ppm*sin(phys_th1(t*d))",
+          "cy": "y_off - L1*ppm*cos(phys_th1(t*d))",
+          "r":  "10"
         },
         "timeline": { "start": 0.0, "end": 1.0 }
       },
@@ -480,4 +519,4 @@ The physics system lives in `systems` — separate from the visual objects in `s
 - [ ] Should `samples` be adaptive (more samples where curvature is high)?
 - [ ] Export format: `captureStream()` + `MediaRecorder` for WebM is the path of least resistance
 - [ ] Spec validation: should the renderer return structured errors on malformed specs?
-- [ ] `functions` referencing other `functions` (recursive / mutually recursive) — currently undefined behaviour
+- [ ] `functions` referencing other `functions` — currently undefined behaviour
