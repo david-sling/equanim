@@ -10,7 +10,7 @@ import type {
   VarValues,
 } from "./types.js";
 import { buildEvaluator, type CompiledExpr } from "./evaluator.js";
-import { createOdeRef, integrateInto, makeInterpolator, type OdeRef } from "./ode-solver.js";
+import { createOdeRef, integrateInto, integrateFromInto, makeInterpolator, type OdeRef } from "./ode-solver.js";
 
 // ─── Coordinate transform ─────────────────────────────────────────────────────
 
@@ -131,13 +131,17 @@ export interface PreparedScene {
   objects: PreparedObject[];
   /**
    * Present when the spec contains one or more ode_system nodes.
-   * Call this whenever variable values change to re-run RK4 integration
-   * with the new values. The trajectory data is updated in place inside
-   * the OdeRef objects, so interpolator functions (already captured in
-   * evaluator closures) automatically reflect the new trajectories on
-   * the next renderFrame call — no evaluator rebuild needed.
+   * Call this whenever variable values change to update the trajectory.
+   *
+   * When `tStart` is omitted or 0, re-integrates from t=0 using the spec's
+   * initial conditions ("always was this value" semantics).
+   *
+   * When `tStart` > 0, branches from the current playback position: the
+   * trajectory before `tStart` is preserved and only the portion from
+   * `tStart` onward is recalculated with the new variable values ("going
+   * forward" semantics).
    */
-  reintegrate?: (vars: VarValues) => void;
+  reintegrate?: (vars: VarValues, tStart?: number) => void;
 }
 
 // ─── Scene preparation (run once) ────────────────────────────────────────────
@@ -226,9 +230,22 @@ export function prepareScene(spec: Equanim, vars: VarValues = {}): PreparedScene
   // ── reintegrate callback ───────────────────────────────────────────────────
   const reintegrate =
     odeSystems.length > 0
-      ? (newVars: VarValues): void => {
+      ? (newVars: VarValues, tStart = 0): void => {
           for (const { system, ref } of odeSystems) {
-            integrateInto(system, spec.meta.duration, newVars, ref);
+            if (tStart > 0) {
+              // Sample the current state at tStart from the existing trajectory
+              const startState: Record<string, number> = {};
+              for (const v of Object.keys(system.state)) {
+                const idx = Math.min(
+                  Math.round(tStart / ref.step),
+                  ref.nSteps - 1,
+                );
+                startState[v] = ref.trajectories[v]![idx] ?? 0;
+              }
+              integrateFromInto(system, tStart, startState, spec.meta.duration, newVars, ref);
+            } else {
+              integrateInto(system, spec.meta.duration, newVars, ref);
+            }
           }
         }
       : undefined;

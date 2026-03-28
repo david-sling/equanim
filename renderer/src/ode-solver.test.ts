@@ -11,7 +11,7 @@
  * With step=0.001, RK4 error at t=10s is O(h^4) ~ 1e-12, well within 1e-4.
  */
 
-import { createOdeRef, integrateInto, makeInterpolator } from "./ode-solver.js";
+import { createOdeRef, integrateInto, integrateFromInto, makeInterpolator } from "./ode-solver.js";
 import type { OdeSystem } from "./types.js";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -139,6 +139,69 @@ integrateInto(scaled, DURATION, { k: 4 }, scaledRef);
 
 assert("after reintegrate k=4: x(π/2) ≈ cos(π) = -1", scaledX(Math.PI / 2), -1, 1e-3);
 assert("after reintegrate k=4: x(π/4) ≈ cos(π/2) = 0", scaledX(Math.PI / 4), 0,  1e-3);
+
+// ─── integrateFromInto ────────────────────────────────────────────────────────
+//
+// Scenario: scaled SHO starting with k=1 (ω=1), x(t)=cos(t).
+// At tStart=π: state is x=cos(π)=-1, v=-sin(π)≈0.
+// We then switch to k=4 (ω=2) from that state.
+// With x(0)=-1, v(0)=0 and ω=2: x(τ) = -cos(2τ) where τ = t - π.
+//
+//   τ = π/4  → t = π+π/4  → x = -cos(π/2) =  0
+//   τ = π/2  → t = π+π/2  → x = -cos(π)   =  1
+//   τ = π    → t = 2π     → x = -cos(2π)  = -1
+
+console.log("\n--- integrateFromInto: partial re-integration ---");
+
+const fwdSystem: OdeSystem = {
+  id: "fwd",
+  type: "ode_system",
+  state: { x: 1, v: 0 },
+  derivatives: { x: "v", v: "-k * x" },
+  step: 0.001,
+};
+
+const fwdRef = createOdeRef(fwdSystem, DURATION, { k: 1 });
+const fwdX = makeInterpolator(fwdRef, "x");
+const fwdV = makeInterpolator(fwdRef, "v");
+
+// Verify baseline k=1 trajectory is correct before branching
+assert("fwd baseline: x(π/2) ≈ 0",  fwdX(Math.PI / 2),  0,          1e-3);
+assert("fwd baseline: x(π)   ≈ -1", fwdX(Math.PI),      -1,         1e-3);
+
+// Branch at tStart = π: sample state from existing trajectory
+const tBranch = Math.PI;
+const branchIdx = Math.round(tBranch / fwdRef.step);
+const startState = {
+  x: fwdRef.trajectories["x"]![branchIdx]!,
+  v: fwdRef.trajectories["v"]![branchIdx]!,
+};
+
+// Re-integrate forward from π with k=4
+integrateFromInto(fwdSystem, tBranch, startState, DURATION, { k: 4 }, fwdRef);
+
+// History before tStart must be preserved unchanged (k=1 trajectory)
+assert("history preserved: x(π/2) still ≈ 0",  fwdX(Math.PI / 2), 0,  1e-3);
+assert("history preserved: x(0)   still =  1",  fwdX(0),           1,  1e-4);
+
+// Continuity at the branch point
+assert("continuous at branch: x(π) = -1",        fwdX(Math.PI),    -1, 1e-3);
+
+// Future follows new k=4 dynamics: x(τ) = -cos(2τ), τ = t - π
+assert("future k=4: x(π + π/4) ≈ 0",  fwdX(Math.PI + Math.PI / 4),  0,  1e-3);
+assert("future k=4: x(π + π/2) ≈ 1",  fwdX(Math.PI + Math.PI / 2),  1,  1e-3);
+assert("future k=4: x(2π)      ≈ -1", fwdX(2 * Math.PI),            -1,  1e-3);
+
+// tStart ≤ 0 falls back to full re-integration from initial conditions
+console.log("\n--- integrateFromInto: tStart=0 falls back to full reintegration ---");
+
+const fallbackRef = createOdeRef(fwdSystem, DURATION, { k: 1 });
+const fallbackX = makeInterpolator(fallbackRef, "x");
+integrateFromInto(fwdSystem, 0, { x: 1, v: 0 }, DURATION, { k: 4 }, fallbackRef);
+
+// Full k=4 trajectory: x(t) = cos(2t), x(π/4) = 0, x(π/2) = -1
+assert("fallback full reintegrate: x(π/4) ≈ 0",  fallbackX(Math.PI / 4), 0,  1e-3);
+assert("fallback full reintegrate: x(π/2) ≈ -1", fallbackX(Math.PI / 2), -1, 1e-3);
 
 // ─── Unknown state var returns 0 ──────────────────────────────────────────────
 
