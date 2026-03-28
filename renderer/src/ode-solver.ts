@@ -104,6 +104,93 @@ export function integrateInto(
 }
 
 /**
+ * Re-integrate an ODE system forward from a mid-trajectory point.
+ *
+ * Leaves trajectory data before `tStart` untouched. Finds the nearest grid
+ * index at or after `tStart`, writes `startState` there, then runs RK4 from
+ * that index to the end of the trajectory using the new variable values.
+ *
+ * Use this to implement "live" variable changes: instead of replaying the
+ * whole simulation from t=0, continue from the current playback position
+ * with the updated physics parameters.
+ *
+ * Falls back to a full `integrateInto` when tStart ≤ 0.
+ *
+ * @param system      - The OdeSystem spec node (derivatives, params, step)
+ * @param tStart      - Absolute time in seconds to branch from
+ * @param startState  - State variable values at tStart (e.g. sampled from existing trajectory)
+ * @param duration    - Total animation duration in seconds
+ * @param vars        - New runtime variable values to use from tStart onward
+ * @param ref         - Mutable trajectory ref; updated in place from tStart onward
+ */
+export function integrateFromInto(
+  system: OdeSystem,
+  tStart: number,
+  startState: Record<string, number>,
+  duration: number,
+  vars: VarValues,
+  ref: OdeRef,
+): void {
+  const step = ref.step;
+  const startIdx = Math.round(tStart / step);
+
+  if (startIdx <= 0) {
+    integrateInto(system, duration, vars, ref);
+    return;
+  }
+
+  const clampedIdx = Math.min(startIdx, ref.nSteps - 1);
+  const params: Params = system.params ?? {};
+  const stateVarNames = Object.keys(system.state);
+
+  // Compile derivative expressions
+  const compiledDerivs = Object.entries(system.derivatives).map(
+    ([varName, expr]) => ({ varName, compiled: math.compile(expr) }),
+  );
+
+  function evalDerivs(s: Record<string, number>): Record<string, number> {
+    const scope: Record<string, unknown> = { ...params, ...vars, ...s };
+    const result: Record<string, number> = {};
+    for (const { varName, compiled } of compiledDerivs) {
+      result[varName] = compiled.evaluate(scope) as number;
+    }
+    return result;
+  }
+
+  // Write start state at the branch point
+  const state: Record<string, number> = { ...startState };
+  for (const v of stateVarNames) {
+    ref.trajectories[v]![clampedIdx] = state[v]!;
+  }
+
+  // RK4 forward from clampedIdx
+  for (let i = clampedIdx + 1; i < ref.nSteps; i++) {
+    const h = Math.min(step, duration - (i - 1) * step);
+    if (h <= 0) break;
+
+    const k1 = evalDerivs(state);
+
+    const s2: Record<string, number> = {};
+    for (const v of stateVarNames) s2[v] = state[v]! + 0.5 * h * k1[v]!;
+    const k2 = evalDerivs(s2);
+
+    const s3: Record<string, number> = {};
+    for (const v of stateVarNames) s3[v] = state[v]! + 0.5 * h * k2[v]!;
+    const k3 = evalDerivs(s3);
+
+    const s4: Record<string, number> = {};
+    for (const v of stateVarNames) s4[v] = state[v]! + h * k3[v]!;
+    const k4 = evalDerivs(s4);
+
+    for (const v of stateVarNames) {
+      state[v] =
+        state[v]! + (h / 6) * (k1[v]! + 2 * k2[v]! + 2 * k3[v]! + k4[v]!);
+      ref.trajectories[v]![i] = state[v]!;
+    }
+  }
+}
+
+/**
  * Allocate an OdeRef and run the initial integration.
  *
  * The ref is mutable — pass it to `integrateInto` to update in place

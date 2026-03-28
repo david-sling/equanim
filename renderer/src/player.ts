@@ -160,12 +160,13 @@ export function createPlayer(
 
     setVariables(newVars: VarValues) {
       vars = { ...newVars };
-      // Re-integrate ODE systems with the new variable values so physics
-      // (e.g. gravity, mass, arm lengths) responds to slider changes.
-      // integrateInto updates trajectory data in the OdeRef objects in place;
-      // interpolator functions already in evaluator closures pick up the new
-      // data automatically on the next renderFrame call.
-      prepared.reintegrate?.(vars);
+      // Re-integrate ODE systems forward from the current playback position.
+      // Trajectory data before `t` is preserved; only the portion from `t`
+      // onward is recalculated with the new variable values.
+      // integrateFromInto updates trajectory data in the OdeRef objects in
+      // place; interpolator functions already in evaluator closures pick up
+      // the new data automatically on the next renderFrame call.
+      prepared.reintegrate?.(vars, t);
       draw();
     },
 
