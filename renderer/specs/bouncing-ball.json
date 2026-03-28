@@ -32,27 +32,29 @@
       "step": 1
     }
   },
+  "systems": [
+    {
+      "id": "phys",
+      "type": "ode_system",
+      "state": { "y": 180.0, "vy": 0.0 },
+      "derivatives": {
+        "y": "vy",
+        "vy": "-g"
+      },
+      "events": [
+        {
+          "condition": "y - (-190 + radius)",
+          "direction": "falling",
+          "mutations": { "vy": "-e * vy" }
+        }
+      ],
+      "solver": "rk4",
+      "step": 0.001
+    }
+  ],
   "scene": {
     "id": "root",
     "objects": [
-      {
-        "id": "phys",
-        "type": "ode_system",
-        "state": { "y": 180.0, "vy": 0.0 },
-        "derivatives": {
-          "y": "vy",
-          "vy": "-g"
-        },
-        "events": [
-          {
-            "condition": "y - (-190 + radius)",
-            "direction": "falling",
-            "mutations": { "vy": "-e * vy" }
-          }
-        ],
-        "solver": "rk4",
-        "step": 0.001
-      },
       {
         "id": "ball",
         "type": "circle",

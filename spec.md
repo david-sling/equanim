@@ -13,9 +13,18 @@ A declarative, JSON-based animation specification. Every visual property is a ma
   "spec": "equanim/0.1",
   "meta": { ... },
   "variables": { ... },
+  "systems": [ ... ],
   "scene": { ... }
 }
 ```
+
+| Field       | Required | Description                                                    |
+| ----------- | -------- | -------------------------------------------------------------- |
+| `spec`      | yes      | Always `"equanim/0.1"`                                         |
+| `meta`      | yes      | Canvas dimensions, fps, duration, coordinate system            |
+| `variables` | no       | User-controllable runtime parameters                           |
+| `systems`   | no       | Physics simulation systems (ODE). Processed before rendering.  |
+| `scene`     | yes      | Visual objects to draw                                         |
 
 ---
 
@@ -56,12 +65,79 @@ Variables are intentionally format-agnostic — a consumer can render them as sl
 
 ---
 
+## `systems` block
+
+Optional. Defines physics simulation systems that are integrated numerically before playback begins. Systems are non-renderable — they produce trajectory data, not pixels.
+
+Each system's state variables are exposed as callable interpolation functions in every scene object's expression scope, using the naming convention `<id>_<var>(t_seconds)`.
+
+```json
+"systems": [
+  {
+    "id": "phys",
+    "type": "ode_system",
+    "state": { "y": 180.0, "vy": 0.0 },
+    "derivatives": { "y": "vy", "vy": "-g" },
+    "events": [
+      {
+        "condition": "y - floor_y",
+        "direction": "falling",
+        "mutations": { "vy": "-e * vy" }
+      }
+    ],
+    "solver": "rk4",
+    "step": 0.001
+  }
+]
+```
+
+### `ode_system`
+
+Integrates a system of first-order ODEs (RK4) over the full animation duration. State variables become interpolators available in all scene objects.
+
+| Field         | Required | Description                                                              |
+| ------------- | -------- | ------------------------------------------------------------------------ |
+| `id`          | yes      | Identifier. State vars are exposed as `<id>_<var>(t_seconds)`.           |
+| `type`        | yes      | Always `"ode_system"`                                                    |
+| `state`       | yes      | Initial conditions: `{ varName: initialValue }`                          |
+| `derivatives` | yes      | RHS expressions: `{ varName: "expression for d(var)/dt" }`              |
+| `params`      | no       | Named constants in scope for derivative and event expressions            |
+| `events`      | no       | Zero-crossing event triggers (see below)                                 |
+| `solver`      | no       | Numerical method. Default: `"rk4"`                                       |
+| `step`        | no       | Integration step in seconds. Smaller = more accurate. Default: `0.001`  |
+
+**Derivative expressions** have access to: all current state variable values, the system's `params`, and all spec `variables`.
+
+### Events
+
+Zero-crossing events fire when a condition expression changes sign. At the crossing instant, state mutations are applied simultaneously (all evaluated from the pre-mutation state, so velocity swaps in elastic collisions are computed correctly).
+
+```json
+"events": [
+  {
+    "condition": "y - floor_y",
+    "direction": "falling",
+    "mutations": { "vy": "-e * vy" }
+  }
+]
+```
+
+| Field       | Description                                                               |
+| ----------- | ------------------------------------------------------------------------- |
+| `condition` | Expression monitored for zero-crossings. Uses same scope as derivatives.  |
+| `direction` | `"rising"` (neg→pos), `"falling"` (pos→neg), or `"either"`               |
+| `mutations` | State mutations applied at the crossing: `{ varName: "expression" }`     |
+
+Multiple systems are allowed. Each runs independently; they cannot reference each other's state directly.
+
+---
+
 ## `scene` block
 
 ```json
 "scene": {
   "id": "root",
-  "objects": [ ...array of primitives... ]
+  "objects": [ ...array of visual primitives... ]
 }
 ```
 
@@ -302,7 +378,7 @@ For `origin="top-left"`, no transform is applied.
 
 The canonical example. Real Lagrangian physics in a JSON file — no code, just ODEs and expressions. Live file: [`renderer/specs/double-pendulum.json`](renderer/specs/double-pendulum.json).
 
-The `ode_system` node integrates the equations of motion (RK4, step=0.005s) before playback. Each state variable is exposed as a callable interpolator — `phys_th1(t*d)`, `phys_th2(t*d)` — available in every sibling object's expression scope.
+The physics system lives in `systems` — separate from the visual objects in `scene`. The `ode_system` integrates the equations of motion (RK4, step=0.005s) before playback. Each state variable is exposed as a callable interpolator — `phys_th1(t*d)`, `phys_th2(t*d)` — available in every scene object's expression scope.
 
 ```json
 {
@@ -324,22 +400,24 @@ The `ode_system` node integrates the equations of motion (RK4, step=0.005s) befo
     "g":   { "label": "Gravity (m/s²)",   "default": 9.8, "min": 1.0, "max": 30.0, "step": 0.1 },
     "ppm": { "label": "Pixels per metre", "default": 55,  "min": 20,  "max": 120,  "step": 5   }
   },
+  "systems": [
+    {
+      "id": "phys",
+      "type": "ode_system",
+      "state": { "th1": 2.0, "w1": 0.0, "th2": 2.5, "w2": 0.0 },
+      "derivatives": {
+        "th1": "w1",
+        "w1":  "(-g*(2*m1+m2)*sin(th1) - m2*g*sin(th1-2*th2) - 2*sin(th1-th2)*m2*(w2^2*L2 + w1^2*L1*cos(th1-th2))) / (L1*(2*m1+m2 - m2*cos(2*(th1-th2))))",
+        "th2": "w2",
+        "w2":  "(2*sin(th1-th2)*(w1^2*L1*(m1+m2) + g*(m1+m2)*cos(th1) + w2^2*L2*m2*cos(th1-th2))) / (L2*(2*m1+m2 - m2*cos(2*(th1-th2))))"
+      },
+      "solver": "rk4",
+      "step": 0.005
+    }
+  ],
   "scene": {
     "id": "root",
     "objects": [
-      {
-        "id": "phys",
-        "type": "ode_system",
-        "state": { "th1": 2.0, "w1": 0.0, "th2": 2.5, "w2": 0.0 },
-        "derivatives": {
-          "th1": "w1",
-          "w1":  "(-g*(2*m1+m2)*sin(th1) - m2*g*sin(th1-2*th2) - 2*sin(th1-th2)*m2*(w2^2*L2 + w1^2*L1*cos(th1-th2))) / (L1*(2*m1+m2 - m2*cos(2*(th1-th2))))",
-          "th2": "w2",
-          "w2":  "(2*sin(th1-th2)*(w1^2*L1*(m1+m2) + g*(m1+m2)*cos(th1) + w2^2*L2*m2*cos(th1-th2))) / (L2*(2*m1+m2 - m2*cos(2*(th1-th2))))"
-        },
-        "solver": "rk4",
-        "step": 0.005
-      },
       {
         "id": "trace",
         "type": "parametric_path",

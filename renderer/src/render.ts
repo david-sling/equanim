@@ -1,8 +1,8 @@
 import type {
   Equanim,
   Meta,
-  SceneObject,
   OdeSystem,
+  SceneObject,
   ParametricPath,
   Line,
   Circle,
@@ -205,27 +205,23 @@ function prepareObject(
  *               For specs without ODE systems this has no effect.
  */
 export function prepareScene(spec: Equanim, vars: VarValues = {}): PreparedScene {
-  // ── Pass 1: integrate ODE systems ─────────────────────────────────────────
+  // ── Pass 1: integrate ODE systems from spec.systems ────────────────────────
   const injectedFns: Record<string, (...args: number[]) => number> = {};
   const odeSystems: Array<{ system: OdeSystem; ref: OdeRef }> = [];
 
-  for (const node of spec.scene.objects) {
-    if (node.type !== "ode_system") continue;
+  for (const system of spec.systems ?? []) {
+    const ref = createOdeRef(system, spec.meta.duration, vars);
+    odeSystems.push({ system, ref });
 
-    const ref = createOdeRef(node, spec.meta.duration, vars);
-    odeSystems.push({ system: node, ref });
-
-    for (const stateVar of Object.keys(node.state)) {
-      injectedFns[`${node.id}_${stateVar}`] = makeInterpolator(ref, stateVar);
+    for (const stateVar of Object.keys(system.state)) {
+      injectedFns[`${system.id}_${stateVar}`] = makeInterpolator(ref, stateVar);
     }
   }
 
-  // ── Pass 2: compile renderable objects ────────────────────────────────────
-  const objects: PreparedObject[] = [];
-  for (const node of spec.scene.objects) {
-    if (node.type === "ode_system") continue;
-    objects.push(prepareObject(node as SceneObject, injectedFns));
-  }
+  // ── Pass 2: compile renderable objects (all scene objects are visual) ──────
+  const objects: PreparedObject[] = spec.scene.objects.map((node) =>
+    prepareObject(node, injectedFns),
+  );
 
   // ── reintegrate callback ───────────────────────────────────────────────────
   const reintegrate =

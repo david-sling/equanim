@@ -22,7 +22,6 @@ import type {
   Equanim,
   Meta,
   ParametricPath,
-  SceneNode,
   Timeline,
 } from "./types.js";
 import type {
@@ -1220,7 +1219,7 @@ console.log("\n--- circle: r is abs'd ---");
   );
 }
 
-// ─── ode_system: prepareScene filters it out of rendered objects ───────────────
+// ─── ode_system: lives in spec.systems, not scene.objects ─────────────────────
 
 console.log("\n--- ode_system: node is non-renderable ---");
 {
@@ -1228,16 +1227,18 @@ console.log("\n--- ode_system: node is non-renderable ---");
     spec: "equanim/0.1",
     meta: centerMeta,
     variables: { k: { label: "k", default: 1, min: 0.1, max: 10, step: 0.1 } },
+    systems: [
+      {
+        id: "sys",
+        type: "ode_system",
+        state: { x: 1, v: 0 },
+        derivatives: { x: "v", v: "-k * x" },
+        step: 0.001,
+      },
+    ],
     scene: {
       id: "root",
       objects: [
-        {
-          id: "sys",
-          type: "ode_system",
-          state: { x: 1, v: 0 },
-          derivatives: { x: "v", v: "-k * x" },
-          step: 0.001,
-        },
         {
           id: "dot",
           type: "circle",
@@ -1276,16 +1277,18 @@ console.log("\n--- ode_system: injected interpolator in expressions ---");
     spec: "equanim/0.1",
     meta: { ...centerMeta, duration: 4 },
     variables: { k: { label: "k", default: 1, min: 0.1, max: 10, step: 0.1 } },
+    systems: [
+      {
+        id: "sys",
+        type: "ode_system",
+        state: { x: 1, v: 0 },
+        derivatives: { x: "v", v: "-k * x" },
+        step: 0.001,
+      },
+    ],
     scene: {
       id: "root",
       objects: [
-        {
-          id: "sys",
-          type: "ode_system",
-          state: { x: 1, v: 0 },
-          derivatives: { x: "v", v: "-k * x" },
-          step: 0.001,
-        },
         {
           id: "dot",
           type: "circle",
@@ -1364,17 +1367,19 @@ console.log(
     spec: "equanim/0.1",
     meta: { ...centerMeta, duration: 4 },
     variables: { k: { label: "k", default: 1, min: 0.1, max: 10, step: 0.1 } },
+    systems: [
+      {
+        id: "sys",
+        type: "ode_system",
+        state: { x: 1, v: 0 },
+        // `k` comes from spec variables — will be undefined if vars={}
+        derivatives: { x: "v", v: "-k * x" },
+        step: 0.001,
+      },
+    ],
     scene: {
       id: "root",
       objects: [
-        {
-          id: "sys",
-          type: "ode_system",
-          state: { x: 1, v: 0 },
-          // `k` comes from spec variables — will be undefined if vars={}
-          derivatives: { x: "v", v: "-k * x" },
-          step: 0.001,
-        },
         {
           id: "dot",
           type: "circle",

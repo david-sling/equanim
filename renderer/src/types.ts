@@ -12,6 +12,17 @@ export interface Equanim {
    * adjust values within [min, max] at step increments.
    */
   variables?: Variables;
+  /**
+   * Physics simulation systems, integrated before playback.
+   *
+   * Each system's state variables are exposed as named interpolation functions
+   * in every scene object's expression scope, using the convention
+   * `<id>_<stateVar>(tSeconds)` (e.g. `phys_th1(t*d)`).
+   *
+   * Kept separate from `scene.objects` because these nodes are not renderable —
+   * they produce data, not pixels. Processing order is: systems first, then scene.
+   */
+  systems?: OdeSystem[];
   scene: Scene;
 }
 
@@ -31,7 +42,7 @@ export interface Meta {
 
 export interface Scene {
   id: string;
-  objects: SceneNode[];
+  objects: SceneObject[];
 }
 
 // ─── Shared fields ────────────────────────────────────────────────────────────
@@ -215,6 +226,3 @@ export interface OdeSystem {
 
 /** A visual primitive — the things that actually get drawn. */
 export type SceneObject = ParametricPath | Line | Circle;
-
-/** Any node that can appear in scene.objects, including non-renderable systems. */
-export type SceneNode = SceneObject | OdeSystem;
