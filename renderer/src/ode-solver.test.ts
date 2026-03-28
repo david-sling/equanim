@@ -140,6 +140,173 @@ integrateInto(scaled, DURATION, { k: 4 }, scaledRef);
 assert("after reintegrate k=4: x(π/2) ≈ cos(π) = -1", scaledX(Math.PI / 2), -1, 1e-3);
 assert("after reintegrate k=4: x(π/4) ≈ cos(π/2) = 0", scaledX(Math.PI / 4), 0,  1e-3);
 
+// ─── Events: zero-crossing detection ─────────────────────────────────────────
+//
+// System: ball falling under gravity, bouncing off a floor at y = 0.
+//   dy/dt  = vy
+//   dvy/dt = -10   (g = 10 for clean math)
+//   Event:  condition = "y", direction = "falling"
+//   Mutation: vy → -e * vy
+//   Initial:  y = 10, vy = 0
+//
+// Exact solution (perfect bounce, e = 1):
+//   Falls from y=10; hits floor at t₁ = sqrt(2) ≈ 1.4142 s
+//   Bounces back with vy = sqrt(20) ≈ 4.4721; returns to y=10 at t = 2√2 ≈ 2.8284 s
+//   Period = 2√2 s; y(n × 2√2) = 10 for all n.
+
+console.log("\n--- events: perfect bounce (e=1) preserves energy ---");
+
+const t1 = Math.sqrt(2);       // first floor contact
+const period = 2 * Math.sqrt(2); // full bounce period
+
+const bouncingBall: OdeSystem = {
+  id: "ball",
+  type: "ode_system",
+  state: { y: 10, vy: 0 },
+  derivatives: { y: "vy", vy: "-10" },
+  params: { e: 1.0 },
+  events: [
+    { condition: "y", direction: "falling", mutations: { vy: "-e * vy" } },
+  ],
+  step: 0.001,
+};
+
+const ballRef = createOdeRef(bouncingBall, 10);
+const ballY  = makeInterpolator(ballRef, "y");
+const ballVy = makeInterpolator(ballRef, "vy");
+
+// Before first bounce: parabolic descent y = 10 - 5t²
+assert("free-fall at t=1: y ≈ 5",      ballY(1),        5,         0.05);
+// After bounce, ball returns to original height
+assert("y(2√2) ≈ 10 (first return)",   ballY(period),   10,        0.05);
+assert("y(4√2) ≈ 10 (second return)",  ballY(2*period), 10,        0.1);
+// Velocity is positive (going up) just after the first bounce
+// vy just before floor: -g*t₁ = -10√2 ≈ -14.14; after e=1 bounce: +14.14
+assertRange("vy just after t₁ is positive (going up)", ballVy(t1 + 0.01), 10, 20);
+
+console.log("\n--- events: inelastic bounce (e=0.75) loses energy each bounce ---");
+
+// e=0.75 → each bounce amplitude = e² × previous = 0.5625 × previous.
+// After 1st bounce: peak ≈ 10 × 0.75² = 5.625
+// vy at floor = -10√2 ≈ -14.14; after bounce: +0.75×14.14 ≈ +10.61
+// Time from floor to peak: 10.61/10 = 1.061s → peak at t ≈ 1.414 + 1.061 = 2.475s
+
+const inelasticBall: OdeSystem = {
+  ...bouncingBall,
+  params: { e: 0.75 },
+};
+
+const inRef = createOdeRef(inelasticBall, 10);
+const inY   = makeInterpolator(inRef, "y");
+
+assertRange("y near 1st bounce peak (t≈2.47): [5.0, 6.2]", inY(2.47),  5.0, 6.2);
+assertRange("y at t=1.98 (rising after bounce): [3, 6]",    inY(1.98),  3.0, 6.0);
+
+console.log("\n--- events: direction filter — 'rising' does NOT fire on descent ---");
+
+// With direction="rising", event fires on upward crossing only.
+// Ball starts at y=10, falls — hits y=0 going DOWNWARD (falling crossing).
+// Since direction="rising" is not triggered on the way down, ball passes through y=0.
+const risingOnly: OdeSystem = {
+  ...bouncingBall,
+  params: { e: 1.0 },
+  events: [
+    { condition: "y", direction: "rising", mutations: { vy: "-vy" } },
+  ],
+};
+
+const risingRef = createOdeRef(risingOnly, 10);
+const risingY   = makeInterpolator(risingRef, "y");
+
+// Ball should NOT bounce — falls through floor, y goes negative
+assert("direction=rising: y(2) is negative (no bounce)", risingY(2), -10, 2);
+
+console.log("\n--- events: 'either' fires on rising crossings (unlike 'falling') ---");
+
+// System: y starts at -5, vy=+20, g=10 (no floor). Condition "y", mutation vy → -vy.
+//
+// Exact crossings of y=0:
+//   y(t) = -5 + 20t - 5t²  →  roots at t = (20 ± √300) / 10
+//   t_rise ≈ 0.268s (going UP),  t_fall ≈ 3.732s (going DOWN)
+//
+// direction="either":  event fires at t≈0.268 (rising). vy inverts (~17.32 → -17.32).
+//   Ball immediately falls back down — y(4) is very negative.
+//
+// direction="falling": event fires at t≈3.732 (falling only). vy inverts (~-17.32 → +17.32).
+//   Ball bounces up — y(4) is positive.
+//
+// This proves "either" fires on the RISING crossing that "falling" ignores.
+
+const risingUpBall: OdeSystem = {
+  id: "up",
+  type: "ode_system",
+  state: { y: -5, vy: 20 },
+  derivatives: { y: "vy", vy: "-10" },
+  events: [{ condition: "y", direction: "either", mutations: { vy: "-vy" } }],
+  step: 0.001,
+};
+
+const risingUpRef  = createOdeRef(risingUpBall, 10);
+const risingUpY    = makeInterpolator(risingUpRef, "y");
+
+// "either" fires on the way up → vy inverts to negative → ball dives down
+assertRange("direction=either: y(4) is negative (fired on rising crossing)",
+  risingUpY(4), -200, -50);
+
+const fallingOnlyBall: OdeSystem = {
+  ...risingUpBall,
+  events: [{ condition: "y", direction: "falling", mutations: { vy: "-vy" } }],
+};
+
+const fallingOnlyRef = createOdeRef(fallingOnlyBall, 10);
+const fallingOnlyY   = makeInterpolator(fallingOnlyRef, "y");
+
+// "falling" does NOT fire on the way up → ball rises freely, bounces at t≈3.73 → y(4) > 0
+assertRange("direction=falling: y(4) is positive (did NOT fire on rising crossing)",
+  fallingOnlyY(4), 1, 30);
+
+console.log("\n--- events: simultaneous mutation (velocity swap) ---");
+
+// Two-variable mutation: vx1 and vx2 swap (equal-mass 1D elastic collision).
+// Condition: x2 - x1 - gap (gap closes to zero).
+// At t=0: x1=0 vx1=1, x2=5 vx2=0. They meet when x1=x2, i.e. after 5s.
+// After collision: vx1=0, vx2=1.
+const collision: OdeSystem = {
+  id: "col",
+  type: "ode_system",
+  state: { x1: 0, vx1: 1, x2: 5, vx2: 0 },
+  derivatives: { x1: "vx1", vx1: "0", x2: "vx2", vx2: "0" },
+  events: [
+    {
+      condition: "x2 - x1",
+      direction: "falling",
+      mutations: {
+        vx1: "vx2",
+        vx2: "vx1",
+      },
+    },
+  ],
+  step: 0.001,
+};
+
+const colRef = createOdeRef(collision, 10);
+const colX1  = makeInterpolator(colRef, "x1");
+const colX2  = makeInterpolator(colRef, "x2");
+const colVx1 = makeInterpolator(colRef, "vx1");
+const colVx2 = makeInterpolator(colRef, "vx2");
+
+// Before collision (t=2): x1=2 moving right, x2=5 stationary
+assert("before collision: x1(2) ≈ 2",  colX1(2), 2,   0.01);
+assert("before collision: x2(2) ≈ 5",  colX2(2), 5,   0.01);
+assert("before collision: vx1(2) ≈ 1", colVx1(2), 1,  0.01);
+assert("before collision: vx2(2) ≈ 0", colVx2(2), 0,  0.01);
+
+// After collision (t=7): x1 is stationary at ~5, x2 is moving right
+assert("after collision: vx1(7) ≈ 0",  colVx1(7), 0,  0.01);
+assert("after collision: vx2(7) ≈ 1",  colVx2(7), 1,  0.01);
+// x2 should have moved 2 units after collision (5s × 1 unit/s = 5 total, 2 post)
+assert("after collision: x2(7) ≈ 7",   colX2(7),  7,  0.05);
+
 // ─── integrateFromInto ────────────────────────────────────────────────────────
 //
 // Scenario: scaled SHO starting with k=1 (ω=1), x(t)=cos(t).

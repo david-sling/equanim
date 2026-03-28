@@ -155,6 +155,27 @@ export interface Circle {
 }
 
 /**
+ * A single event that fires when a condition crosses zero during ODE integration.
+ *
+ * The solver monitors `condition` for sign changes after each RK4 step.
+ * When one is detected in the specified direction, the solver bisects to find
+ * the crossing time, then evaluates each entry in `mutations` and writes the
+ * results back into the state — all from the pre-mutation state, so swaps
+ * (e.g. elastic collision velocity exchange) are computed correctly.
+ *
+ * Mutation expressions have access to: current state variables, the system's
+ * `params`, and the spec's global `variables`.
+ */
+export interface EventDef {
+  /** Expression monitored for zero-crossings. Positive → negative is "falling". */
+  condition: string;
+  /** Which crossing direction triggers the event. */
+  direction: "rising" | "falling" | "either";
+  /** State variable mutations applied simultaneously at the event point. */
+  mutations: Record<string, string>;
+}
+
+/**
  * A non-renderable physics simulation node.
  *
  * The renderer integrates the system numerically (RK4) before playback,
@@ -177,8 +198,13 @@ export interface OdeSystem {
   state: Record<string, number>;
   /** Derivative expressions: variable name → expression for d(var)/dt. */
   derivatives: Record<string, string>;
-  /** Named constants available in derivative expressions. */
+  /** Named constants available in derivative and event expressions. */
   params?: Params;
+  /**
+   * Zero-crossing events. Each event fires when its condition changes sign
+   * in the specified direction, applying state mutations at that instant.
+   */
+  events?: EventDef[];
   /** Numerical solver. Default: "rk4". */
   solver?: "rk4";
   /** Integration step size in seconds. Smaller = more accurate. Default: 0.001. */
