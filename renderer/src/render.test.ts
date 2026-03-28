@@ -22,6 +22,7 @@ import type {
   Equanim,
   Meta,
   ParametricPath,
+  SceneObject,
   Timeline,
 } from "./types.js";
 import type {
@@ -813,11 +814,11 @@ console.log("\n--- renderFrame: timeline filtering ---");
         {
           ...waveSpec.scene.objects[0]!,
           timeline: { start: 1 / 3, end: 2 / 3 },
-        } as SceneNode,
+        } as SceneObject,
         {
           ...waveSpec.scene.objects[1]!,
           timeline: { start: 0.0, end: 1.0 },
-        } as SceneNode,
+        } as SceneObject,
       ],
     },
   };

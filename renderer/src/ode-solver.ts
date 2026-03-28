@@ -22,16 +22,16 @@ export interface OdeRef {
 
 interface CompiledDeriv {
   varName: string;
-  fn: ReturnType<typeof math.compile>;
+  fn: math.EvalFunction;
 }
 
 interface CompiledMutation {
   varName: string;
-  fn: ReturnType<typeof math.compile>;
+  fn: math.EvalFunction;
 }
 
 interface CompiledEvent {
-  condition: ReturnType<typeof math.compile>;
+  condition: math.EvalFunction;
   direction: "rising" | "falling" | "either";
   mutations: CompiledMutation[];
 }
@@ -118,7 +118,7 @@ function rk4Step(
 
 /** Evaluate a compiled event condition expression. */
 function evalCondition(
-  condition: ReturnType<typeof math.compile>,
+  condition: math.EvalFunction,
   baseScope: Record<string, unknown>,
   state: Record<string, number>,
 ): number {
